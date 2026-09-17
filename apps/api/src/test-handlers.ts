@@ -5,6 +5,7 @@ import { dispenseHandler } from './handlers/dispense.js';
 import { restockHandler } from './handlers/restock.js';
 import { locatorHandler } from './handlers/locator.js';
 import { auditHandler } from './handlers/audit.js';
+import { runSeed } from './seeds/seed-data.js';
 
 function createMockEvent(options: {
   method: string;
@@ -62,6 +63,9 @@ async function runTests() {
       failed++;
     }
   }
+
+  // Ensure fresh baseline data before test assertions
+  await runSeed();
 
   // --- 1. AUTHENTICATION TESTS ---
   console.log(`\n[Group 1: Authentication & JWT Cookies]`);

@@ -6,6 +6,7 @@
     "infra": "bin/infra.js"
   },
   "scripts": {
+    "dev": "tsx src/local-server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "cdk": "cdk",
@@ -13,7 +14,8 @@
     "cdk:deploy": "cdk deploy",
     "seed": "tsx src/seeds/seed-data.ts",
     "inspect": "tsx src/inspect-db.ts",
-    "test:local": "tsx src/test-local.ts"
+    "test:local": "tsx src/test-local.ts",
+    "test:handlers": "tsx src/test-handlers.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.577.0",
@@ -23,11 +25,12 @@
     "aws-cdk-lib": "^2.140.0",
     "bcryptjs": "^2.4.3",
     "constructs": "^10.3.0",
-    "jose": "^5.3.0"
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.138",
     "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.12.12",
     "aws-cdk": "^2.140.0",
     "esbuild": "^0.21.3",

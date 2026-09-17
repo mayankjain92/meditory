@@ -40,7 +40,7 @@ export interface GetInventoryResponse {
  */
 export interface DispenseRequest {
   drugId: string;
-  quantity?: number; // Defaults to 1; supports prescribed batches like 2, 5, 10
+  delta?: number; // Defaults to -1
 }
 
 export interface DispenseResponse {

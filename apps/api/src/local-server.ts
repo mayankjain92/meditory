@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
 
     try {
       let response;
-      const path = url.pathname;
+      const path = url.pathname.replace(/^\/api/, '');
       const method = req.method;
 
       if (method === 'POST' && path === '/auth/login') {

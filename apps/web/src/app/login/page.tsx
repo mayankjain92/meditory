@@ -25,11 +25,13 @@ import {
   PlusCircle,
 } from 'lucide-react';
 
+import { api } from '@/lib/api-client';
+
 export default function LoginPage() {
   const router = useRouter();
 
   // Form State
-  const [email, setEmail] = useState('STF-71092-PHC');
+  const [email, setEmail] = useState('rahul.sharma@phc-alibag.in');
   const [password, setPassword] = useState('Password@123');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberTerminal, setRememberTerminal] = useState(true);
@@ -63,32 +65,22 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Authentication failed. Please check credentials.');
-      }
+      const data = await api.post('/api/auth/login', { email: email.trim(), password });
 
       // Store the token and worker profile in Session Storage per PRD Section 6.3
-      sessionStorage.setItem('meditory_token', data.token);
-      sessionStorage.setItem('meditory_user', JSON.stringify(data.user));
-      sessionStorage.setItem('meditory_facility', JSON.stringify(data.facility));
+      if (data.token) sessionStorage.setItem('meditory_token', data.token);
+      if (data.user) sessionStorage.setItem('meditory_user', JSON.stringify(data.user));
+      if (data.facility) sessionStorage.setItem('meditory_facility', JSON.stringify(data.facility));
 
       setLoginSuccess(true);
-      showToast(`Welcome, ${data.user.name}. Terminal Session Established.`);
+      showToast(`Welcome, ${data.user?.name || 'Staff'}. Terminal Session Established.`);
 
       setTimeout(() => {
         router.push('/rapid-desk');
-      }, 700);
+      }, 600);
     } catch (err) {
       setIsSubmitting(false);
-      setErrorMessage(err instanceof Error ? err.message : 'An unexpected error occurred.');
+      setErrorMessage(err instanceof Error ? err.message : 'Authentication failed.');
     }
   };
 
@@ -255,21 +247,66 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Terminal Node Info Bar */}
-            <div className="flex items-center justify-between px-3.5 py-2 rounded bg-surface-container-low text-on-surface border border-slate-200/50">
-              <div className="flex items-center gap-2 min-w-0">
-                <Building2 className="w-4 h-4 text-primary-container shrink-0" />
-                <span className="text-xs text-on-surface truncate font-medium">
-                  PHC Sector 4 — Dispensary Terminal A
+            {/* Demo Clinic Accounts Quick-Select */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                  Demo Clinic Accounts (Raigad District)
                 </span>
+                <span className="text-[10px] text-primary-container font-mono">Password@123</span>
               </div>
-              <button
-                onClick={() => showToast('Unit assignment verified for Raigad District Central Registry.')}
-                className="text-primary-container hover:underline text-xs shrink-0 font-semibold ml-2"
-                type="button"
-              >
-                Switch Unit
-              </button>
+              <div className="grid grid-cols-3 gap-1.5 text-left">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('rahul.sharma@phc-alibag.in');
+                    setPassword('Password@123');
+                    showToast('Selected Alibag PHC (Demo: 0 ASV stock & Referral)');
+                  }}
+                  className={`p-2 rounded border text-left transition-all ${
+                    email.includes('alibag')
+                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
+                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold truncate">Alibag PHC</div>
+                  <div className="text-[10px] text-slate-500 truncate">Dr. Rahul (0 ASV)</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('priya.deshmukh@phc-vadkhal.in');
+                    setPassword('Password@123');
+                    showToast('Selected Vadkhal PHC (Demo: Low Stock Alarm)');
+                  }}
+                  className={`p-2 rounded border text-left transition-all ${
+                    email.includes('vadkhal')
+                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
+                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold truncate">Vadkhal PHC</div>
+                  <div className="text-[10px] text-slate-500 truncate">Dr. Priya (Low)</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('amit.patil@chc-pen.in');
+                    setPassword('Password@123');
+                    showToast('Selected Pen CHC (Demo: Surplus Stock Destination)');
+                  }}
+                  className={`p-2 rounded border text-left transition-all ${
+                    email.includes('pen')
+                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
+                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold truncate">Pen CHC</div>
+                  <div className="text-[10px] text-slate-500 truncate">Dr. Amit (25 ASV)</div>
+                </button>
+              </div>
             </div>
 
             {/* Error Message Box */}

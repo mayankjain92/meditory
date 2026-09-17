@@ -1,6 +1,10 @@
 # Meditory Design System Specification (DESIGN.md)
 
-> Extracted from Stitch Reference Project: **Meditory Healthcare Login Screen** (`projects/13120210108923112325`)  
+> Extracted from Stitch Reference Projects:  
+> - **Meditory Clinical Dispensary & Rapid Desk** (`projects/14267053160395357447`)  
+> - **Meditory Healthcare Workstation System** (`projects/13120210108923112325`)  
+>  
+> 📖 **Comprehensive Dimensions & Component Blueprint:** See [FRONTEND_UI_SPEC.md](file:///home/mayankjain/Documents/hackathons/meditory/FRONTEND_UI_SPEC.md) for full component sizing, pixel heights, typography scales, modal dialog layouts, and responsive breakpoints.  
 > Target: Desktop / Laptop Clinical Workstation (1440px+ viewport)
 
 ---

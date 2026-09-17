@@ -5,23 +5,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import WorkstationShell from '@/components/WorkstationShell';
 import {
-  Search,
   Network,
   Phone,
-  Navigation,
   CheckCircle2,
-  Clock,
-  Building2,
-  AlertCircle,
   FileText,
-  Share2,
   ArrowRight,
-  ShieldCheck,
   Check,
-  User,
-  Radio,
-  ExternalLink,
 } from 'lucide-react';
+import { api } from '@/lib/api-client';
 
 interface ClinicResult {
   facilityId: string;
@@ -42,10 +33,10 @@ interface ClinicResult {
 
 function StockLocatorContent() {
   const searchParams = useSearchParams();
-  const initialDrug = searchParams.get('drug') || 'DRUG-ARV-01';
+  const initialDrug = searchParams.get('drug') || 'DRUG-ASV-01';
 
   const [selectedDrug, setSelectedDrug] = useState(initialDrug);
-  const [maxDistance, setMaxDistance] = useState<number>(25);
+  const [maxDistance, setMaxDistance] = useState<number>(30);
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [results, setResults] = useState<ClinicResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,22 +49,24 @@ function StockLocatorContent() {
   };
 
   const DRUG_CATALOG = [
-    { id: 'DRUG-ARV-01', name: 'Anti-Rabies Vaccine (ARV) 0.5ml', localStock: 4, isCritical: true },
-    { id: 'DRUG-ASV-01', name: 'Anti-Snake Venom (ASV) Polyvalent 10ml', localStock: 28, isCritical: true },
-    { id: 'DRUG-ADR-01', name: 'Adrenaline (Epinephrine) 1:1000 1ml', localStock: 42, isCritical: true },
-    { id: 'DRUG-OXY-01', name: 'Oxytocin Injection 10 IU/ml', localStock: 18, isCritical: true },
+    { id: 'DRUG-ASV-01', name: 'Anti-Snake Venom (ASV) Polyvalent 10ml', localStock: 0, isCritical: true },
+    { id: 'DRUG-ARV-02', name: 'Anti-Rabies Vaccine (ARV) 0.5ml', localStock: 14, isCritical: true },
+    { id: 'DRUG-ADR-03', name: 'Adrenaline (Epinephrine) 1:1000 1ml', localStock: 8, isCritical: true },
+    { id: 'DRUG-PCM-04', name: 'Paracetamol 500mg Tablets', localStock: 450, isCritical: false },
+    { id: 'DRUG-AMX-05', name: 'Amoxicillin 500mg Capsules', localStock: 80, isCritical: false },
+    { id: 'DRUG-ORS-06', name: 'Oral Rehydration Salts (ORS) Sachet', localStock: 120, isCritical: false },
   ];
 
   const fetchStockLocator = async (drugId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/network/stock-locator?drugId=${drugId}`);
-      const data = await res.json();
+      const data = await api.get(`/api/network/stock-locator?drugId=${drugId}`);
       if (data.results) {
         setResults(data.results);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      showToast(e.message || 'Failed to locate neighboring clinics.');
     } finally {
       setLoading(false);
     }
@@ -95,37 +88,36 @@ function StockLocatorContent() {
     <WorkstationShell>
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 right-6 z-50 bg-primary-container text-white px-4 py-3 rounded-lg shadow-xl border border-primary-fixed-dim/30 flex items-center gap-2 text-xs animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-4 h-4 text-secondary-fixed shrink-0" />
+        <div className="fixed top-20 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl border border-slate-700 flex items-center gap-2.5 text-xs animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Emergency Referral Modal */}
       {referralModalClinic && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface-container-lowest max-w-md w-full rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="bg-primary-container p-4 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Network className="w-5 h-5 text-secondary-fixed" />
-                <h3 className="font-bold text-sm">Emergency Patient Referral Slip</h3>
+                <Network className="w-5 h-5 text-teal-400" />
+                <h3 className="font-semibold text-sm">Emergency Patient Referral Slip</h3>
               </div>
               <button
                 onClick={() => setReferralModalClinic(null)}
-                className="text-white/80 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-white text-lg font-bold w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-800"
               >
                 ✕
               </button>
             </div>
-            <div className="p-5 space-y-4 text-xs text-on-surface">
-              <div className="p-3 bg-secondary-fixed/30 rounded-lg border border-secondary/20 flex items-center gap-2">
-                <Check className="w-4 h-4 text-secondary shrink-0" />
+            <div className="p-5 space-y-4 text-xs text-slate-700">
+              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>
-                  <strong>Verified Stock Reserved:</strong> 2 Vials of {activeDrugObj.name} held for 45
-                  mins at {referralModalClinic.facilityName}.
+                  <strong>Verified Stock Reserved:</strong> 2 Vials of {activeDrugObj.name} held for 45 mins at {referralModalClinic.facilityName}.
                 </span>
               </div>
-              <div className="space-y-1.5 font-mono text-[11px] bg-surface-container-low p-3 rounded-lg border border-slate-200/50">
+              <div className="space-y-1.5 font-mono text-[11px] bg-slate-50 p-3 rounded-lg border border-slate-200">
                 <p>
                   <strong>Destination Facility:</strong> {referralModalClinic.facilityName}
                 </p>
@@ -136,17 +128,14 @@ function StockLocatorContent() {
                   <strong>Emergency Contact:</strong> {referralModalClinic.phone}
                 </p>
                 <p>
-                  <strong>Distance / Transit:</strong> {referralModalClinic.distanceKm} km (
-                  {referralModalClinic.transitTimeEstimate})
+                  <strong>Distance / Transit:</strong> {referralModalClinic.distanceKm} km ({referralModalClinic.transitTimeEstimate})
                 </p>
                 <p>
-                  <strong>Digital Transfer Token:</strong> REF-2026-
-                  {Math.floor(100000 + Math.random() * 900000)}
+                  <strong>Digital Transfer Token:</strong> REF-2026-{Math.floor(100000 + Math.random() * 900000)}
                 </p>
               </div>
-              <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                Hand this digital authorization to the accompanying ambulance crew or emergency attendant.
-                Destination facility receives an automatic priority alert.
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Hand this digital authorization to the accompanying ambulance crew or emergency attendant. Destination facility receives an automatic priority alert.
               </p>
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -154,7 +143,7 @@ function StockLocatorContent() {
                     setReferralModalClinic(null);
                     showToast('Referral dispatch confirmed and transmitted to 108 Emergency Service.');
                   }}
-                  className="w-full py-2.5 bg-primary-container hover:bg-primary text-white font-bold rounded-lg shadow-sm text-xs"
+                  className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg shadow-xs text-xs transition-colors"
                 >
                   Print / Send Digital Referral Slip
                 </button>
@@ -165,72 +154,71 @@ function StockLocatorContent() {
       )}
 
       {/* Main Container */}
-      <div className="w-full max-w-[1440px] mx-auto px-6 py-6 flex flex-col gap-6">
+      <div className="w-full flex flex-col gap-6">
         {/* Top Header & Context */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-surface-container-lowest p-5 rounded-xl border border-slate-200/70 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-secondary bg-secondary-fixed/40 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
                 District Health Network
               </span>
-              <span className="text-xs text-outline">•</span>
-              <span className="text-xs text-on-surface-variant font-medium">
+              <span className="text-xs text-slate-400">•</span>
+              <span className="text-xs text-slate-500 font-medium">
                 Raigad District Primary Health Cluster
               </span>
             </div>
-            <h1 className="text-xl font-bold text-primary tracking-tight mt-1">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-1">
               Inter-Clinic Stock Locator &amp; Emergency Referral
             </h1>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              Instantly locate verified emergency supplies in neighboring primary clinics to coordinate
-              life-saving patient transfers or inter-facility balancing.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Locate verified emergency supplies in neighboring primary clinics to coordinate life-saving patient transfers.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/rapid-desk"
-              className="px-3.5 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-primary font-semibold text-xs transition-colors flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors flex items-center gap-1.5 border border-slate-200"
             >
-              <ArrowRight className="w-4 h-4 rotate-180" />
+              <ArrowRight className="w-3.5 h-3.5 rotate-180" />
               <span>Back to Rapid Desk</span>
             </Link>
           </div>
         </div>
 
-        {/* Medicine Selector & Distance Filter Controls */}
+        {/* Filter Controls (Simplified Row) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Medicine Selector */}
-          <div className="bg-surface-container-lowest p-4 rounded-xl border border-slate-200/70 shadow-sm flex flex-col gap-2">
-            <label className="text-[11px] font-bold uppercase text-on-surface tracking-wide">
-              Target Emergency Medicine
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2">
+            <label className="text-xs font-semibold text-slate-900">
+              Target Medicine
             </label>
             <select
               value={selectedDrug}
               onChange={(e) => setSelectedDrug(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-surface-container-low text-xs font-semibold text-on-surface border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-container/20"
+              className="w-full h-9 px-3 rounded-lg bg-slate-50 text-xs font-medium text-slate-900 border border-slate-300 focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
             >
               {DRUG_CATALOG.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name} (Local: {d.localStock} units)
+                  {d.name}
                 </option>
               ))}
             </select>
-            <div className="flex items-center justify-between text-[11px] text-on-surface-variant pt-1">
-              <span>Local Stock: <strong>{activeDrugObj.localStock} units</strong></span>
-              <span className={activeDrugObj.localStock <= 5 ? 'text-tertiary font-bold' : 'text-secondary font-semibold'}>
-                {activeDrugObj.localStock <= 5 ? '⚠️ Depleted / Buffer Low' : 'Adequate'}
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
+              <span>Local Stock: <strong className="text-slate-800">{activeDrugObj.localStock} units</strong></span>
+              <span className={activeDrugObj.localStock <= 5 ? 'text-rose-700 font-semibold' : 'text-emerald-700 font-semibold'}>
+                {activeDrugObj.localStock <= 5 ? '⚠️ Depleted / Low' : 'Adequate'}
               </span>
             </div>
           </div>
 
           {/* Max Distance Filter */}
-          <div className="bg-surface-container-lowest p-4 rounded-xl border border-slate-200/70 shadow-sm flex flex-col gap-2">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2">
             <div className="flex justify-between items-center">
-              <label className="text-[11px] font-bold uppercase text-on-surface tracking-wide">
-                Maximum Radius
+              <label className="text-xs font-semibold text-slate-900">
+                Search Radius
               </label>
-              <span className="text-xs font-bold text-primary font-mono">{maxDistance} km</span>
+              <span className="text-xs font-bold text-teal-700 font-mono">{maxDistance} km</span>
             </div>
             <input
               type="range"
@@ -239,21 +227,21 @@ function StockLocatorContent() {
               step="5"
               value={maxDistance}
               onChange={(e) => setMaxDistance(parseInt(e.target.value, 10))}
-              className="w-full accent-primary-container cursor-pointer mt-2"
+              className="w-full accent-teal-600 cursor-pointer"
             />
-            <div className="flex justify-between text-[10px] text-outline font-mono">
+            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
               <span>5 km</span>
-              <span>25 km (Default)</span>
+              <span>25 km (Standard)</span>
               <span>50 km</span>
             </div>
           </div>
 
           {/* Facility Type Filter */}
-          <div className="bg-surface-container-lowest p-4 rounded-xl border border-slate-200/70 shadow-sm flex flex-col gap-2">
-            <label className="text-[11px] font-bold uppercase text-on-surface tracking-wide">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between gap-2">
+            <label className="text-xs font-semibold text-slate-900">
               Facility Classification
             </label>
-            <div className="grid grid-cols-4 gap-1 pt-1">
+            <div className="grid grid-cols-4 gap-1">
               {[
                 { id: 'ALL', label: 'All' },
                 { id: 'PHC', label: 'PHC' },
@@ -263,10 +251,10 @@ function StockLocatorContent() {
                 <button
                   key={f.id}
                   onClick={() => setSelectedType(f.id)}
-                  className={`py-1.5 text-xs font-bold rounded-md transition-all ${
+                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
                     selectedType === f.id
-                      ? 'bg-primary-container text-white shadow-xs'
-                      : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
+                      ? 'bg-teal-700 text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
                   }`}
                   type="button"
                 >
@@ -274,88 +262,71 @@ function StockLocatorContent() {
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-outline mt-1">
-              Showing {filteredResults.length} verified facilities
+            <span className="text-[10px] text-slate-400">
+              {filteredResults.length} facilities within radius
             </span>
           </div>
         </div>
 
-        {/* Network Results List */}
+        {/* Network Results List (Clean Hierarchy & Single-Line Muted Metadata) */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-on-surface">
+            <h2 className="text-base font-bold text-slate-900">
               Verified Stock Available Nearby ({filteredResults.length} Facilities)
             </h2>
-            <span className="text-xs font-mono text-outline">
-              Origin: PHC Sector 4 (Static Terminal)
+            <span className="text-xs font-mono text-slate-400">
+              Origin: Alibag Primary Health Centre
             </span>
           </div>
 
           {filteredResults.length === 0 ? (
-            <div className="bg-surface-container-lowest p-8 text-center rounded-xl border border-slate-200 text-xs text-on-surface-variant">
-              No neighboring facilities within {maxDistance} km currently meet this filter. Try expanding the radius.
+            <div className="bg-white p-8 text-center rounded-xl border border-slate-200 text-xs text-slate-500">
+              No neighboring facilities within {maxDistance} km currently match this filter. Try expanding the radius.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredResults.map((clinic) => (
                 <div
                   key={clinic.facilityId}
-                  className="bg-surface-container-lowest p-5 rounded-xl border border-slate-200/70 shadow-sm flex flex-col justify-between hover:shadow-md transition-all"
+                  className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-sm transition-all"
                 >
                   <div className="space-y-3">
+                    {/* Header: Facility Name + Distance Chip */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-surface-container-high text-primary uppercase">
-                          {clinic.facilityType} Node
-                        </span>
-                        <h3 className="font-bold text-sm text-on-surface mt-1">
+                        <h3 className="font-bold text-sm text-slate-900">
                           {clinic.facilityName}
                         </h3>
-                        <p className="text-[11px] text-on-surface-variant">
-                          {clinic.doctorInCharge}
+                        <p className="text-xs text-slate-500 font-medium">
+                          {clinic.doctorInCharge} · {clinic.facilityType}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <span className="font-mono text-base font-bold text-primary block">
-                          {clinic.distanceKm} km
-                        </span>
-                        <span className="text-[10px] text-outline">Distance</span>
-                      </div>
+                      <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                        {clinic.distanceKm} km
+                      </span>
                     </div>
 
-                    {/* Stock Counter Badge */}
-                    <div className="p-3 bg-secondary-fixed/30 rounded-lg border border-secondary/20 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-on-secondary-fixed block">
-                          Verified Available Stock
-                        </span>
-                        <span className="text-xl font-bold font-mono text-secondary">
-                          {clinic.quantity} {clinic.unit}
-                        </span>
-                      </div>
-                      <div className="text-right text-[11px] font-mono text-outline">
-                        <div className="text-secondary font-semibold">Cold: {clinic.coldChainTemp}</div>
-                        <div>Batch: {clinic.batchNumber}</div>
-                      </div>
+                    {/* Stock Counter Banner */}
+                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold text-emerald-900">
+                        Verified Stock
+                      </span>
+                      <span className="text-2xl font-bold font-mono text-emerald-700">
+                        {clinic.quantity} <span className="text-xs font-normal text-emerald-800">{clinic.unit}</span>
+                      </span>
                     </div>
 
-                    <div className="space-y-1 text-[11px] text-on-surface-variant">
-                      <div className="flex items-center gap-1.5">
-                        <Navigation className="w-3.5 h-3.5 text-primary shrink-0" />
-                        <span>{clinic.transitTimeEstimate}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-outline shrink-0" />
-                        <span>{clinic.lastVerifiedAt} via LoRa Mesh Sync</span>
-                      </div>
-                    </div>
+                    {/* Single Muted Caption Line (Replaced 2 Cluttered Icon Rows) */}
+                    <p className="text-[11px] text-slate-400 leading-normal">
+                      {clinic.transitTimeEstimate} · Verified LoRa Sync · Cold-Chain {clinic.coldChainTemp}
+                    </p>
                   </div>
 
-                  {/* Actions Bar */}
-                  <div className="pt-4 mt-3 border-t border-slate-200/60 flex flex-col gap-2">
+                  {/* Actions Bar (Clear Primary & Secondary) */}
+                  <div className="pt-4 mt-3 border-t border-slate-100 flex flex-col gap-2">
                     <button
                       onClick={() => setReferralModalClinic(clinic)}
-                      className="w-full py-2 bg-primary-container hover:bg-primary text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                      className="w-full h-9 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all"
                       type="button"
                     >
                       <FileText className="w-3.5 h-3.5" />
@@ -363,9 +334,9 @@ function StockLocatorContent() {
                     </button>
                     <a
                       href={`tel:${clinic.phone}`}
-                      className="w-full py-2 bg-surface-container hover:bg-surface-container-high text-primary text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                      className="w-full h-8 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition-colors"
                     >
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone className="w-3.5 h-3.5 text-slate-400" />
                       <span>Call Facility ({clinic.phone})</span>
                     </a>
                   </div>
@@ -381,9 +352,8 @@ function StockLocatorContent() {
 
 export default function StockLocatorPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-outline font-mono">Loading Inter-Clinic Stock Locator...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Loading Inter-Clinic Stock Locator...</div>}>
       <StockLocatorContent />
     </Suspense>
   );
 }
-

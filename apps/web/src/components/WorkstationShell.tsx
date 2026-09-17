@@ -4,19 +4,18 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Gauge,
+  LayoutDashboard,
   Network,
-  ClipboardList,
+  History,
   LogOut,
   Search,
-  ThermometerSnowflake,
   AlertTriangle,
-  Radio,
   Stethoscope,
+  Building2,
   ChevronRight,
-  User,
-  Barcode,
+  ShieldCheck,
 } from 'lucide-react';
+import { api } from '@/lib/api-client';
 
 interface WorkstationShellProps {
   children: React.ReactNode;
@@ -34,9 +33,8 @@ export default function WorkstationShell({
   const pathname = usePathname();
   const router = useRouter();
 
-  const [workerName, setWorkerName] = useState('Dr. Rahul Sharma (Chief Pharmacist)');
-  const [facilityName, setFacilityName] = useState('PHC Sector 4 — Dispensary');
-  const [selectedLang, setSelectedLang] = useState<'EN' | 'HI' | 'TA'>('EN');
+  const [workerName, setWorkerName] = useState('Dr. Rahul Sharma');
+  const [facilityName, setFacilityName] = useState('Alibag Primary Health Centre (PHC)');
 
   useEffect(() => {
     try {
@@ -50,86 +48,82 @@ export default function WorkstationShell({
         const f = JSON.parse(storedFacility);
         if (f.name) setFacilityName(f.name);
       }
-    } catch (e) {
-      // fallback to defaults
+    } catch {
+      // fallback to pre-seeded defaults
     }
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await api.post('/api/auth/logout', {});
+    } catch {
+      // continue sign out
+    }
     sessionStorage.clear();
     router.push('/login');
   };
 
   const navItems = [
     {
-      label: 'Rapid Desk',
+      label: 'Inventory & Dispensing',
       path: '/rapid-desk',
-      icon: Gauge,
-      badge: 'ALT+1',
-      badgeClass: 'bg-secondary-fixed text-on-secondary-fixed font-bold',
+      icon: LayoutDashboard,
+      badge: 'Ledger',
     },
     {
       label: 'Inter-Clinic Locator',
       path: '/locator',
       icon: Network,
-      badge: '3 Nearby PHCs',
-      badgeClass: 'bg-secondary-container text-on-secondary-container font-semibold',
+      badge: 'Referrals',
     },
     {
-      label: 'Audit Log',
+      label: 'Audit Trail',
       path: '/audit',
-      icon: ClipboardList,
-      hasChevron: true,
+      icon: History,
+      badge: 'Logs',
     },
   ];
 
   return (
-    <div className="bg-surface font-sans text-on-surface antialiased min-h-screen flex selection:bg-primary-container selection:text-white">
-      {/* 1. Fixed Left Sidebar (72 = 18rem = 288px) */}
-      <aside className="fixed left-0 top-0 h-full w-72 bg-surface-container-lowest flex flex-col justify-between z-50 shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-r border-slate-200/60">
+    <div className="bg-slate-50 text-slate-800 antialiased min-h-screen flex selection:bg-teal-600 selection:text-white">
+      {/* Fixed Left Sidebar */}
+      <aside className="fixed left-0 top-0 h-full w-64 bg-white flex flex-col justify-between z-50 shadow-sm border-r border-slate-200">
         <div className="flex flex-col">
-          {/* Clinic Branding & Profile Card */}
-          <div className="p-4 flex flex-col gap-2 bg-surface-container-low border-b border-slate-200/50">
-            <div className="flex items-center gap-2">
-              <img
-                src="/logo.svg"
-                alt="Meditory Logo"
-                className="h-8 w-auto object-contain"
-              />
+          {/* App Branding */}
+          <div className="p-4 border-b border-slate-100">
+            <Link href="/rapid-desk" className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-teal-600 text-white font-bold flex items-center justify-center text-base shadow-sm">
+                M+
+              </div>
               <div className="flex flex-col">
-                <span className="text-sm text-primary font-bold tracking-tight leading-tight">
+                <span className="text-base font-bold text-slate-900 tracking-tight leading-tight">
                   Meditory
                 </span>
-                <span className="text-[10px] text-outline uppercase tracking-wider font-semibold">
-                  Clinical Suite
+                <span className="text-[10px] text-teal-700 font-semibold tracking-wider uppercase">
+                  Primary Clinic Desk
                 </span>
               </div>
-            </div>
+            </Link>
 
-            <div className="mt-1 pt-1 flex flex-col gap-0.5 border-t border-slate-200/40">
-              <span className="text-xs text-on-surface font-semibold truncate">
-                {facilityName}
-              </span>
-              <div className="flex items-center gap-1">
-                <Stethoscope className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span className="text-[11px] text-on-surface-variant truncate">
-                  {workerName}
-                </span>
+            {/* Clinic Tenancy Card */}
+            <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200/70">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 truncate">
+                <Building2 className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                <span className="truncate">{facilityName}</span>
               </div>
-              <div className="flex items-center justify-between mt-1 pt-0.5">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 bg-surface-container-high rounded text-on-surface-variant font-medium">
-                  Terminal: TRM-04-A
-                </span>
-                <span className="flex items-center gap-1 text-[11px] text-secondary font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-secondary inline-block animate-pulse"></span>
-                  Live
-                </span>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-600 truncate mt-1">
+                <Stethoscope className="w-3 h-3 text-slate-400 shrink-0" />
+                <span className="truncate">{workerName}</span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-2 text-[10px] font-medium text-emerald-700">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                <span>Active Shift • Online</span>
               </div>
             </div>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="p-3 flex flex-col gap-1">
+          {/* Navigation Items */}
+          <nav className="p-3 space-y-1">
             {navItems.map((item) => {
               const isActive = pathname === item.path;
               const Icon = item.icon;
@@ -137,29 +131,26 @@ export default function WorkstationShell({
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm transition-all ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-primary-container text-on-primary font-semibold shadow-xs'
-                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                      ? 'bg-teal-700 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon className="w-4 h-4" />
-                    <span className="text-xs font-semibold">{item.label}</span>
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{item.label}</span>
                   </div>
                   {item.badge && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                         isActive
-                          ? 'bg-white/20 text-white font-bold'
-                          : item.badgeClass
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-100 text-slate-500'
                       }`}
                     >
                       {item.badge}
                     </span>
-                  )}
-                  {item.hasChevron && !isActive && (
-                    <ChevronRight className="w-4 h-4 text-outline" />
                   )}
                 </Link>
               );
@@ -167,128 +158,63 @@ export default function WorkstationShell({
           </nav>
         </div>
 
-        {/* Sidebar Footer: Shift & Sign Out */}
-        <div className="p-3.5 flex flex-col gap-3 bg-surface-container-low border-t border-slate-200/50">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
-              <span className="w-2 h-2 rounded-full bg-secondary inline-block"></span>
-              <span>12h Shift • Offline Sync Active</span>
-            </div>
-            <div className="flex items-center justify-between text-outline font-mono text-[10px]">
-              <span>Local Cache v4.2.1</span>
-              <span className="text-secondary font-semibold">99.8% Sync</span>
-            </div>
+        {/* Sidebar Footer: Security Badge & Sign Out */}
+        <div className="p-3.5 border-t border-slate-100 space-y-2.5 bg-slate-50/50">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+            <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <span>Clinic Boundary Guard Active</span>
           </div>
-
           <button
             onClick={handleSignOut}
-            className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg bg-surface-container-highest text-error hover:bg-error-container hover:text-on-error-container text-xs font-semibold transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold transition-colors border border-slate-200 hover:border-rose-200 shadow-2xs"
             type="button"
           >
-            <LogOut className="w-4 h-4" />
-            <span>Sign Out / Switch Shift</span>
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
-      {/* 2. Main Workstation Area (offset by sidebar width 72 = 18rem = 288px) */}
-      <div className="pl-72 w-full flex flex-col min-h-screen">
-        {/* Top Header Bar */}
-        <header className="fixed top-0 left-72 right-0 h-16 bg-surface-container-lowest/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-6 border-b border-slate-200/50">
-          {/* Global Drug Search Bar */}
-          <div className="flex items-center gap-4 flex-1 max-w-2xl">
+      {/* Main Content Viewport */}
+      <div className="pl-64 w-full flex flex-col min-h-screen">
+        {/* Top Navbar */}
+        <header className="sticky top-0 h-16 bg-white/95 backdrop-blur-md z-40 flex items-center justify-between px-6 border-b border-slate-200/80 shadow-2xs">
+          {/* Global Search Bar */}
+          <div className="flex items-center gap-3 flex-1 max-w-lg">
             <div className="relative w-full">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none" />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-                placeholder="Search medicine by generic name, salt, batch, or barcode... (Press /)"
-                className="w-full h-10 pl-10 pr-24 rounded-lg bg-surface-container-low text-xs text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary-container/20 border border-slate-200/60 transition-all"
+                placeholder="Search shelf medicines, generic salts, or formulations..."
+                className="w-full h-9 pl-9 pr-4 rounded-lg bg-slate-50 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 border border-slate-200 transition-all"
               />
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-surface-container-highest text-on-surface-variant">
-                  /
-                </span>
-                <span title="Barcode Scanner Listener Active">
-                  <Barcode className="w-4 h-4 text-primary cursor-pointer" />
-                </span>
-              </div>
             </div>
           </div>
 
-          {/* Right Action Widgets */}
-          <div className="flex items-center gap-4">
-            {/* Operational Telemetry Pill */}
-            <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary-fixed text-on-secondary-fixed text-xs font-semibold border border-secondary/20">
-              <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
-              <span>Sync Server: Operational</span>
-              <span className="text-outline-variant font-normal">|</span>
-              <span className="flex items-center gap-1">
-                <ThermometerSnowflake className="w-3.5 h-3.5 text-secondary" />
-                ILR Cold Chain: 3.8°C
-              </span>
-            </div>
-
-            {/* Emergency Dispense Action */}
-            <button
-              onClick={() => {
-                if (onEmergencyClick) onEmergencyClick();
-                else router.push('/rapid-desk#emergency');
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-tertiary text-on-tertiary hover:bg-tertiary-container hover:text-on-tertiary text-xs font-semibold transition-colors shadow-sm active:scale-95"
-              type="button"
+          {/* Quick Actions & Status */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/rapid-desk/emergency"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 text-xs font-semibold transition-all shadow-xs active:scale-95"
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-white" />
-              <span>Emergency Dispense</span>
-            </button>
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Emergency Injections</span>
+            </Link>
 
-            {/* Language Switcher */}
-            <div className="flex items-center gap-0.5 bg-surface-container-low rounded-lg p-0.5 text-xs text-on-surface-variant border border-slate-200/40">
-              <button
-                onClick={() => setSelectedLang('EN')}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                  selectedLang === 'EN'
-                    ? 'bg-surface-container-lowest text-primary shadow-xs'
-                    : 'hover:text-on-surface'
-                }`}
-                type="button"
-              >
-                EN
-              </button>
-              <button
-                onClick={() => setSelectedLang('HI')}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                  selectedLang === 'HI'
-                    ? 'bg-surface-container-lowest text-primary shadow-xs'
-                    : 'hover:text-on-surface'
-                }`}
-                type="button"
-              >
-                हिन्दी
-              </button>
-              <button
-                onClick={() => setSelectedLang('TA')}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
-                  selectedLang === 'TA'
-                    ? 'bg-surface-container-lowest text-primary shadow-xs'
-                    : 'hover:text-on-surface'
-                }`}
-                type="button"
-              >
-                தமிழ்
-              </button>
-            </div>
-
-            {/* Profile Avatar */}
-            <div className="w-8 h-8 rounded-full bg-primary-container text-white flex items-center justify-center shadow-xs cursor-pointer hover:ring-2 hover:ring-primary-container/30 transition-all">
-              <User className="w-4 h-4 text-white" />
-            </div>
+            <Link
+              href="/locator?drug=DRUG-ASV-01"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors border border-slate-200"
+            >
+              <Network className="w-3.5 h-3.5 text-teal-600" />
+              <span>Inter-Clinic Referral</span>
+            </Link>
           </div>
         </header>
 
-        {/* Page Body Viewport */}
-        <main className="relative pt-16 bg-surface min-h-screen w-full flex-1">
+        {/* Page Content */}
+        <main className="p-6 bg-slate-50 flex-1 w-full max-w-[1400px] mx-auto">
           {children}
         </main>
       </div>

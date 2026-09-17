@@ -41,8 +41,14 @@ export async function dispenseHandler(event: APIGatewayProxyEventV2) {
   }
 
   const { drugId } = body;
-  // Custom quantity input: defaults to 1 if not specified
-  const dispenseQty = typeof body.quantity === 'number' && body.quantity > 0 ? Math.floor(body.quantity) : 1;
+  // Custom quantity input: accepts positive quantity or negative delta (defaults to 1)
+  const rawQty =
+    typeof body.quantity === 'number' && body.quantity > 0
+      ? body.quantity
+      : typeof (body as { delta?: number }).delta === 'number' && (body as { delta?: number }).delta !== 0
+      ? Math.abs((body as { delta?: number }).delta!)
+      : 1;
+  const dispenseQty = Math.floor(rawQty);
 
   if (!drugId) {
     return badRequest('drugId is required.');

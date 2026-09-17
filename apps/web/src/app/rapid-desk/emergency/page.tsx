@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import WorkstationShell from '@/components/WorkstationShell';
 import {
   AlertTriangle,
@@ -11,10 +11,7 @@ import {
   CheckCircle2,
   PackagePlus,
   Pill,
-  AlertCircle,
-  Layers,
-  ChevronDown,
-  ChevronRight,
+  ArrowLeft,
   ShieldCheck,
 } from 'lucide-react';
 import { api } from '@/lib/api-client';
@@ -37,32 +34,21 @@ interface DrugItem {
   status: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 }
 
-function RapidDeskContent() {
+function EmergencyTriageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [items, setItems] = useState<DrugItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [alertDismissed, setAlertDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Progressive Disclosure: Expanded table row state
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
-  // =========================================================================
-  // CUSTOM DISPENSE MODAL STATE
-  // =========================================================================
+  // Custom Dispense Modal State
   const [showDispenseModal, setShowDispenseModal] = useState(false);
   const [dispenseTargetDrug, setDispenseTargetDrug] = useState<DrugItem | null>(null);
   const [dispenseQty, setDispenseQty] = useState(1);
   const [dispenseNotes, setDispenseNotes] = useState('');
   const [isSubmittingDispense, setIsSubmittingDispense] = useState(false);
 
-  // =========================================================================
-  // CUSTOM RESTOCK / INWARD STOCK MODAL STATE
-  // =========================================================================
+  // Custom Restock / Inward Stock Modal State
   const [showRestockModal, setShowRestockModal] = useState(false);
   const [restockDrugId, setRestockDrugId] = useState('');
   const [restockQty, setRestockQty] = useState(50);
@@ -84,7 +70,7 @@ function RapidDeskContent() {
         setItems(data.items);
       }
     } catch (e: any) {
-      console.error('Failed to load inventory:', e);
+      console.error('Failed to load emergency inventory:', e);
       showToast(e.message || 'Failed to load clinic inventory.');
     } finally {
       setLoading(false);
@@ -95,17 +81,17 @@ function RapidDeskContent() {
     fetchInventory();
   }, []);
 
-  // 1-Tap Quick Dispense (-1)
+  // Quick Dispense 1 unit
   const handleQuickDispense = async (drugId: string) => {
     await executeDispense(drugId, 1);
   };
 
-  // Open Custom Dispense Modal
+  // Open Dispense Modal
   const openDispenseModal = (item: DrugItem) => {
     setDispenseTargetDrug(item);
     const defaultQty = item.form.toLowerCase().includes('tablet') || item.form.toLowerCase().includes('capsule') ? 10 : 1;
     setDispenseQty(Math.min(defaultQty, Math.max(1, item.quantity)));
-    setDispenseNotes(`OPD-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+    setDispenseNotes(`EMERGENCY-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
     setShowDispenseModal(true);
   };
 
@@ -140,7 +126,7 @@ function RapidDeskContent() {
 
       showToast(`✅ Dispensed ${quantity} ${targetItem.unit} of ${targetItem.drugName}.`);
       if (result.alarmTriggered) {
-        showToast(`🚨 Buffer Alert: ${result.drugName} dropped below safety buffer (${result.newQuantity} left)!`);
+        showToast(`🚨 Critical Buffer Alert: ${result.drugName} dropped below safety buffer (${result.newQuantity} left)!`);
       }
       return true;
     } catch (err: any) {
@@ -163,9 +149,9 @@ function RapidDeskContent() {
     }
   };
 
-  // Open Custom Restock Modal
+  // Open Restock Modal
   const openRestockModal = (drugId?: string) => {
-    const targetId = drugId || items[0]?.drugId || '';
+    const targetId = drugId || emergencyItems[0]?.drugId || items[0]?.drugId || '';
     const targetItem = items.find((i) => i.drugId === targetId);
     setRestockDrugId(targetId);
     setRestockQty(50);
@@ -180,7 +166,7 @@ function RapidDeskContent() {
   const handleRestockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restockDrugId || restockQty <= 0) {
-      showToast('⚠️ Please select a medicine and positive restock quantity.');
+      showToast('⚠️ Please select an emergency medicine and positive restock quantity.');
       return;
     }
 
@@ -219,44 +205,20 @@ function RapidDeskContent() {
     }
   };
 
-  // Filter & Compute Stats
-  const totalFormulary = items.length;
-  const inStockCount = items.filter((i) => i.status === 'IN_STOCK').length;
-  const lowStockCount = items.filter((i) => i.status === 'LOW_STOCK').length;
-  const outOfStockCount = items.filter((i) => i.status === 'OUT_OF_STOCK').length;
-
-  const criticalShortageItem = items.find((i) => i.isCritical && (i.status === 'OUT_OF_STOCK' || i.status === 'LOW_STOCK'));
-
+  // EMERGENCY TRIAGE FILTERING RULES:
+  // 1. All emergency formulary items
   const emergencyItems = items.filter((i) => i.tier === 'EMERGENCY');
-  const filteredLedgerItems = items.filter((i) => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      !q ||
-      i.drugName.toLowerCase().includes(q) ||
-      i.genericName.toLowerCase().includes(q) ||
-      i.category.toLowerCase().includes(q) ||
-      i.drugId.toLowerCase().includes(q);
 
-    if (!matchesSearch) return false;
-    if (selectedCategory === 'ALL') return true;
-    if (selectedCategory === 'CRITICAL') return i.isCritical || i.status === 'LOW_STOCK' || i.status === 'OUT_OF_STOCK';
-    if (selectedCategory === 'EMERGENCY') return i.tier === 'EMERGENCY';
-    if (selectedCategory === 'COLD_CHAIN') return (i.storageLocation || '').includes('ILR') || (i.category || '').includes('Vaccine') || (i.category || '').includes('Antivenom');
-    if (selectedCategory === 'ESSENTIAL') return i.tier === 'ESSENTIAL';
-    if (selectedCategory === 'OUT_OF_STOCK') return i.quantity === 0;
-    return true;
-  });
+  // 2. Urgent items: ONLY LOW_STOCK or OUT_OF_STOCK items receive high-emphasis triage cards
+  const urgentEmergencyItems = emergencyItems.filter(
+    (i) => i.status === 'LOW_STOCK' || i.status === 'OUT_OF_STOCK'
+  );
 
-  const toggleRowExpansion = (drugId: string) => {
-    setExpandedRow((prev) => (prev === drugId ? null : drugId));
-  };
+  // 3. Nominal items: Adequate stock, displayed with clean reassurance styling
+  const nominalEmergencyItems = emergencyItems.filter((i) => i.status === 'IN_STOCK');
 
   return (
-    <WorkstationShell
-      searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
-      onEmergencyClick={() => router.push('/rapid-desk/emergency')}
-    >
+    <WorkstationShell>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl border border-slate-700 flex items-center gap-2.5 text-xs animate-in fade-in slide-in-from-top-2">
@@ -271,16 +233,15 @@ function RapidDeskContent() {
       {showDispenseModal && dispenseTargetDrug && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white max-w-md w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            {/* Modal Header */}
             <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center">
                   <Pill className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm">Dispense Medicine</h3>
+                  <h3 className="font-semibold text-sm">Emergency Dispense</h3>
                   <p className="text-[11px] text-slate-300">
-                    Enter prescription quantity for counter fulfillment
+                    High-priority clinical administration record
                   </p>
                 </div>
               </div>
@@ -292,13 +253,11 @@ function RapidDeskContent() {
               </button>
             </div>
 
-            {/* Modal Form */}
             <form onSubmit={handleCustomDispenseSubmit} className="p-5 space-y-4 text-xs text-slate-700">
-              {/* Selected Medicine Info Card */}
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-600">
-                    {dispenseTargetDrug.category}
+                  <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wide">
+                    Emergency Priority
                   </span>
                   <span className="text-[11px] text-slate-400 font-mono">
                     {dispenseTargetDrug.drugId}
@@ -314,7 +273,6 @@ function RapidDeskContent() {
                 </div>
               </div>
 
-              {/* Quantity Input + Preset Chips */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-xs text-slate-900">
@@ -344,10 +302,9 @@ function RapidDeskContent() {
                   </span>
                 </div>
 
-                {/* Quick Presets */}
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                   <span className="text-[11px] text-slate-500 font-medium mr-1">Quick Presets:</span>
-                  {[1, 2, 5, 10, 15, 30].map((preset) => {
+                  {[1, 2, 5, 10].map((preset) => {
                     if (preset > dispenseTargetDrug.quantity && dispenseTargetDrug.quantity > 0) return null;
                     return (
                       <button
@@ -376,7 +333,6 @@ function RapidDeskContent() {
                 </div>
               </div>
 
-              {/* Dynamic Live Balance Preview */}
               <div
                 className={`p-3 rounded-lg border text-xs flex items-center justify-between transition-colors ${
                   dispenseQty > dispenseTargetDrug.quantity
@@ -403,21 +359,19 @@ function RapidDeskContent() {
                 </span>
               </div>
 
-              {/* OPD / Prescription Reference (Optional) */}
               <div className="space-y-1">
                 <label className="font-semibold text-xs text-slate-900">
-                  Patient OPD / Prescription Reference (Optional)
+                  Emergency Triage Incident / Case ID
                 </label>
                 <input
                   type="text"
                   value={dispenseNotes}
                   onChange={(e) => setDispenseNotes(e.target.value)}
-                  placeholder="e.g. OPD-2026-4891 or Prescription ID"
+                  placeholder="e.g. TRAUMA-2026-091 or BITE-CASE-12"
                   className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
                 />
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -450,16 +404,15 @@ function RapidDeskContent() {
       {showRestockModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white max-w-lg w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            {/* Modal Header */}
             <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center">
                   <PackagePlus className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm">Inward Medicine Restock</h3>
+                  <h3 className="font-semibold text-sm">Emergency Stock Replenishment</h3>
                   <p className="text-[11px] text-slate-300">
-                    Receive warehouse dispatch or counter replenishment batch
+                    Receive depot dispatch or vaccine replenishment batch
                   </p>
                 </div>
               </div>
@@ -471,12 +424,10 @@ function RapidDeskContent() {
               </button>
             </div>
 
-            {/* Modal Body Form */}
             <form onSubmit={handleRestockSubmit} className="p-5 space-y-4 text-xs text-slate-700">
-              {/* Medicine Select */}
               <div className="space-y-1">
                 <label className="font-semibold text-xs text-slate-900">
-                  Select Medicine to Restock
+                  Select Emergency Medicine to Replenish
                 </label>
                 <select
                   value={restockDrugId}
@@ -485,20 +436,19 @@ function RapidDeskContent() {
                     setRestockDrugId(id);
                     const item = items.find((i) => i.drugId === id);
                     if (item) {
-                      setRestockStorage(item.storageLocation || (item.tier === 'EMERGENCY' ? 'Cold-Chain ILR 2' : 'Pharmacy Shelf'));
+                      setRestockStorage(item.storageLocation || 'Cold-Chain ILR 2 (3.4°C)');
                     }
                   }}
                   className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
                 >
-                  {items.map((item) => (
+                  {emergencyItems.map((item) => (
                     <option key={item.drugId} value={item.drugId}>
-                      {item.drugName} ({item.genericName}) — Current: {item.quantity} {item.unit}
+                      {item.drugName} ({item.genericName}) — Current: {item.quantity} {item.unit} ({item.status})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Quantity Input + Quick Presets */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-xs text-slate-900">
@@ -520,17 +470,16 @@ function RapidDeskContent() {
                     value={restockQty}
                     onChange={(e) => setRestockQty(Math.max(1, parseInt(e.target.value, 10) || 0))}
                     className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-base font-mono font-bold text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                    placeholder="Enter quantity (e.g. 50)"
+                    placeholder="Enter quantity"
                   />
                   <span className="text-xs font-semibold text-slate-500 shrink-0 uppercase px-2 py-2.5 bg-slate-100 rounded-lg border border-slate-200">
                     {items.find((i) => i.drugId === restockDrugId)?.unit || 'Units'}
                   </span>
                 </div>
 
-                {/* Quick Presets */}
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
                   <span className="text-[11px] text-slate-500 font-medium mr-1">Quick Presets:</span>
-                  {[10, 25, 50, 100, 250, 500].map((preset) => (
+                  {[5, 10, 25, 50, 100].map((preset) => (
                     <button
                       key={preset}
                       type="button"
@@ -547,7 +496,6 @@ function RapidDeskContent() {
                 </div>
               </div>
 
-              {/* Dynamic Preview */}
               <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between">
                 <div>
                   <span className="font-semibold block">Updated Stock Level After Restock:</span>
@@ -564,7 +512,6 @@ function RapidDeskContent() {
                 </span>
               </div>
 
-              {/* Batch Number & Expiry Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-semibold text-xs text-slate-900">
@@ -593,7 +540,6 @@ function RapidDeskContent() {
                 </div>
               </div>
 
-              {/* Storage Shelf & Challan */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-semibold text-xs text-slate-900">
@@ -603,7 +549,7 @@ function RapidDeskContent() {
                     type="text"
                     value={restockStorage}
                     onChange={(e) => setRestockStorage(e.target.value)}
-                    placeholder="e.g. ILR Unit 2 (3.4°C)"
+                    placeholder="e.g. Cold-Chain ILR 2 (3.4°C)"
                     className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
                   />
                 </div>
@@ -621,16 +567,14 @@ function RapidDeskContent() {
                 </div>
               </div>
 
-              {/* Security & Audit Footer Note */}
               <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                  <span>Verified Receiving Officer Signature Logged</span>
+                  <span>Verified Medical Officer Signature Logged</span>
                 </div>
-                <span className="font-mono text-slate-400 text-[10px]">CloudWatch EMF</span>
+                <span className="font-mono text-slate-400 text-[10px]">Audit Logged</span>
               </div>
 
-              {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -658,354 +602,368 @@ function RapidDeskContent() {
       )}
 
       {/* ===================================================================== */}
-      {/* 3. EXECUTIVE EMERGENCY ALERT BANNER                                   */}
+      {/* NAVIGATION BREADCRUMB & HEADER                                        */}
       {/* ===================================================================== */}
-      {!alertDismissed && criticalShortageItem && (
-        <div className="w-full bg-rose-50 border border-rose-200 rounded-xl p-4 shadow-xs mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-200/80 text-rose-800 px-2 py-0.5 rounded">
-                  Critical Shortage Alert
-                </span>
-                <span className="text-xs font-semibold text-rose-900">
-                  {criticalShortageItem.drugName} is {criticalShortageItem.quantity === 0 ? 'Out of Stock' : 'Below Safety Buffer'}
-                </span>
-              </div>
-              <p className="text-xs text-rose-700 mt-0.5">
-                Current stock is <strong>{criticalShortageItem.quantity} {criticalShortageItem.unit}</strong> (Buffer threshold: {criticalShortageItem.threshold} {criticalShortageItem.unit}). Replenish immediately or initiate an inter-clinic stock transfer.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-            <button
-              onClick={() => openRestockModal(criticalShortageItem.drugId)}
-              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
-              type="button"
-            >
-              <PackagePlus className="w-3.5 h-3.5" />
-              <span>+ Restock Now</span>
-            </button>
-            <Link
-              href={`/locator?drug=${criticalShortageItem.drugId}`}
-              className="px-3 py-1.5 bg-white text-slate-800 hover:bg-slate-50 text-xs font-semibold rounded-lg border border-slate-300 shadow-xs flex items-center gap-1.5 transition-all"
-            >
-              <Network className="w-3.5 h-3.5 text-teal-600" />
-              <span>Locate Nearby Clinics</span>
-            </Link>
-            <button
-              onClick={() => setAlertDismissed(true)}
-              className="text-slate-400 hover:text-slate-600 text-xs p-1.5 rounded-lg hover:bg-rose-100/50 transition-colors"
-              type="button"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================================== */}
-      {/* 4. EXECUTIVE SUMMARY KPI CARDS                                        */}
-      {/* ===================================================================== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Card 1: Total Formulary */}
-        <div
-          onClick={() => setSelectedCategory('ALL')}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs cursor-pointer hover:border-teal-500/50 transition-all"
+      <div className="mb-6 space-y-3">
+        <Link
+          href="/rapid-desk"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-teal-700 hover:underline transition-colors"
         >
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-semibold">Total Formulary</span>
-            <Layers className="w-4 h-4 text-slate-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-slate-900">{totalFormulary}</span>
-            <span className="text-xs text-slate-500">active medicines</span>
-          </div>
-        </div>
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Dispensary Shelf Ledger</span>
+        </Link>
 
-        {/* Card 2: Adequate Stock */}
-        <div
-          onClick={() => setSelectedCategory('ALL')}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs cursor-pointer hover:border-emerald-500/50 transition-all"
-        >
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-semibold">Adequate Stock</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-emerald-700">{inStockCount}</span>
-            <span className="text-xs text-emerald-600">above threshold</span>
-          </div>
-        </div>
-
-        {/* Card 3: Low Buffer Attention */}
-        <div
-          onClick={() => router.push('/rapid-desk/emergency')}
-          className={`bg-white p-4 rounded-xl border shadow-xs cursor-pointer hover:border-amber-400 transition-all ${
-            lowStockCount > 0 ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-semibold">Low Buffer Attention</span>
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-amber-700">{lowStockCount}</span>
-            <span className="text-xs text-amber-600">triage review →</span>
-          </div>
-        </div>
-
-        {/* Card 4: Stockouts */}
-        <div
-          onClick={() => router.push('/rapid-desk/emergency')}
-          className={`bg-white p-4 rounded-xl border shadow-xs cursor-pointer hover:border-rose-400 transition-all ${
-            outOfStockCount > 0 ? 'border-rose-300 bg-rose-50/20' : 'border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-semibold">Stockouts</span>
-            <AlertCircle className="w-4 h-4 text-rose-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-mono text-rose-700">{outOfStockCount}</span>
-            <span className="text-xs text-rose-600">emergency triage →</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ===================================================================== */}
-      {/* 5. DISPENSARY FORMULARY LEDGER TABLE (SINGLE SOURCE OF TRUTH)         */}
-      {/* ===================================================================== */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                Dispensary Shelf Stock Ledger
-              </h2>
-              <span className="text-xs font-mono text-slate-400">
-                ({filteredLedgerItems.length} of {items.length} items)
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center shadow-xs">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                Emergency Injections & Critical Triage
+              </h1>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
+                Tier 1 Triage
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live formulary inventory • Click any row for lot, expiry, and referral details
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+              Dedicated triage view for cold-chain vaccines and life-saving antidotes. High-emphasis action cards are surfaced exclusively for stockouts and low-buffer items requiring urgent clinical intervention.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={() => openRestockModal()}
-              className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
+              className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
               type="button"
             >
               <PackagePlus className="w-3.5 h-3.5" />
               <span>+ Inward Stock Delivery</span>
             </button>
-
-            {/* Category Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
-              {[
-                { id: 'ALL', label: 'All' },
-                { id: 'EMERGENCY', label: 'Emergency' },
-                { id: 'ESSENTIAL', label: 'Essential' },
-                { id: 'CRITICAL', label: 'Low / Critical' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedCategory(tab.id)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
-                    selectedCategory === tab.id
-                      ? 'bg-teal-700 text-white shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                  type="button"
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            <Link
+              href="/locator?drug=DRUG-ASV-01"
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-xs flex items-center gap-1.5 transition-all"
+            >
+              <Network className="w-3.5 h-3.5 text-teal-600" />
+              <span>Inter-Clinic Locator</span>
+            </Link>
           </div>
         </div>
+      </div>
 
-        {/* Streamlined 5-Column Ledger Table with Progressive Disclosure */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="py-3 px-4 w-[35%]">Medicine</th>
-                  <th className="py-3 px-4 w-[20%]">Category</th>
-                  <th className="py-3 px-4 w-[18%]">Shelf Stock</th>
-                  <th className="py-3 px-4 w-[12%]">Status</th>
-                  <th className="py-3 px-4 w-[15%] text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredLedgerItems.map((item) => {
-                  const isLow = item.status === 'LOW_STOCK';
-                  const isOut = item.quantity === 0;
-                  const isExpanded = expandedRow === item.drugId;
+      {/* ===================================================================== */}
+      {/* TRIAGE STATUS SUMMARY CHIPS                                           */}
+      {/* ===================================================================== */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-600">Total Emergency Formulary</span>
+          <span className="font-mono font-bold text-base text-slate-900">{emergencyItems.length} Drugs</span>
+        </div>
 
-                  return (
-                    <React.Fragment key={item.drugId}>
-                      <tr
-                        onClick={() => toggleRowExpansion(item.drugId)}
-                        className={`cursor-pointer transition-colors ${
-                          isExpanded ? 'bg-slate-50/90' : 'hover:bg-slate-50/60'
+        <div className={`p-3.5 rounded-xl border shadow-xs flex items-center justify-between ${
+          urgentEmergencyItems.length > 0 ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-white border-slate-200'
+        }`}>
+          <span className="text-xs font-semibold">Urgent Triage Attention Needed</span>
+          <span className={`font-mono font-bold text-base ${
+            urgentEmergencyItems.length > 0 ? 'text-rose-700' : 'text-slate-400'
+          }`}>
+            {urgentEmergencyItems.length} {urgentEmergencyItems.length === 1 ? 'Item' : 'Items'}
+          </span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-600">Adequate Reserves</span>
+          <span className="font-mono font-bold text-base text-emerald-700">{nominalEmergencyItems.length} Items</span>
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* SECTION A: URGENT EMERGENCY ITEMS (ONLY LOW_STOCK OR OUT_OF_STOCK)   */}
+      {/* ===================================================================== */}
+      {urgentEmergencyItems.length > 0 ? (
+        <section className="space-y-4 mb-8">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
+            <h2 className="text-sm font-bold text-rose-900 uppercase tracking-wide">
+              Immediate Action Required ({urgentEmergencyItems.length})
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {urgentEmergencyItems.map((item) => {
+              const isOut = item.quantity === 0;
+              const bufferRatio = item.threshold > 0 ? Math.min(100, Math.round((item.quantity / item.threshold) * 100)) : 0;
+
+              return (
+                <div
+                  key={item.drugId}
+                  className={`bg-white rounded-xl p-5 border transition-all flex flex-col justify-between shadow-xs ${
+                    isOut
+                      ? 'border-rose-300 ring-1 ring-rose-300/50 bg-rose-50/10'
+                      : 'border-amber-300 ring-1 ring-amber-300/50 bg-amber-50/10'
+                  }`}
+                >
+                  <div>
+                    {/* Header: Drug Title & Status Badge */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                          {item.drugName}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                          {item.genericName} · {item.form}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                          isOut
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : 'bg-amber-100 text-amber-800 border-amber-200'
                         }`}
                       >
-                        {/* 1. Medicine: Name & Generic */}
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-start gap-2">
-                            <span className="text-slate-400 mt-0.5 shrink-0">
-                              {isExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-teal-700" />
-                              ) : (
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              )}
-                            </span>
-                            <div className="flex flex-col">
-                              <span className="font-bold text-slate-900 text-sm">{item.drugName}</span>
-                              <span className="text-xs text-slate-500 font-normal">
-                                {item.genericName} · {item.form}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
+                        {isOut ? 'Out of Stock' : 'Low Stock'}
+                      </span>
+                    </div>
 
-                        {/* 2. Category: Clean text (no border badge) */}
-                        <td className="py-3.5 px-4">
-                          <span className="text-xs text-slate-600 font-medium">{item.category}</span>
-                        </td>
+                    {/* Muted Single-Line Caption (Demoted Metadata Pattern) */}
+                    <p className="text-[11px] text-slate-400 mt-2.5 font-mono truncate">
+                      Batch {item.batchNumber || 'LOT-2026-01'} · Exp {item.expiryDate || '2027-12'} · {item.storageLocation || 'Cold-Chain ILR'} · Buffer: {item.threshold} {item.unit}
+                    </p>
 
-                        {/* 3. Shelf Stock: High Contrast Tabular Number */}
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-baseline gap-1.5 font-mono">
-                            <span
-                              className={`text-base font-bold ${
-                                isOut ? 'text-rose-700' : isLow ? 'text-amber-700' : 'text-slate-900'
-                              }`}
-                            >
-                              {item.quantity}
-                            </span>
-                            <span className="text-xs text-slate-400 font-sans font-normal">
-                              {item.unit}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* 4. Status: Single Clean Pill */}
-                        <td className="py-3.5 px-4">
+                    {/* Stock Counter & Buffer Bar */}
+                    <div className="my-5">
+                      <div className="flex items-baseline justify-between mb-1.5">
+                        <div className="flex items-baseline gap-1.5 font-mono">
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              isOut
-                                ? 'bg-rose-50 text-rose-800 border-rose-200'
-                                : isLow
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            className={`text-3xl font-bold tracking-tight ${
+                              isOut ? 'text-rose-700' : 'text-amber-700'
                             }`}
                           >
-                            {isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'}
+                            {item.quantity}
                           </span>
-                        </td>
+                          <span className="text-xs font-sans font-normal text-slate-400">
+                            {item.unit} on shelf
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-500">
+                          {isOut
+                            ? '0% of buffer'
+                            : `${bufferRatio}% of buffer (${item.threshold} ${item.unit})`}
+                        </span>
+                      </div>
 
-                        {/* 5. Actions: Primary Dispense + Quick -1 (Compact Group) */}
-                        <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleQuickDispense(item.drugId)}
-                              disabled={isOut}
-                              className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold rounded border border-teal-200 shadow-2xs transition-all active:scale-95 disabled:opacity-30 text-xs"
-                              title="1-Tap Quick Dispense (-1)"
-                              type="button"
-                            >
-                              -1
-                            </button>
-                            <button
-                              onClick={() => openDispenseModal(item)}
-                              disabled={isOut}
-                              className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded shadow-2xs transition-colors disabled:opacity-30 text-xs"
-                              type="button"
-                            >
-                              Dispense
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      {/* Clean Progress Bar */}
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            isOut ? 'w-0' : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${isOut ? 0 : Math.max(8, bufferRatio)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* Progressive Disclosure: Expandable Row Detail */}
-                      {isExpanded && (
-                        <tr className="bg-slate-50/80 border-y border-slate-200/80">
-                          <td colSpan={5} className="py-3 px-6 text-xs text-slate-600">
-                            <div className="flex flex-wrap items-center justify-between gap-4">
-                              <div className="flex flex-wrap items-center gap-6 text-[11px] text-slate-500 font-mono">
-                                <div>
-                                  <span className="text-slate-400 font-sans">Batch:</span>{' '}
-                                  <strong className="text-slate-800">{item.batchNumber || 'LOT-2026-01'}</strong>
-                                </div>
-                                <div>
-                                  <span className="text-slate-400 font-sans">Expiry:</span>{' '}
-                                  <strong className="text-slate-800">{item.expiryDate || '2027-12'}</strong>
-                                </div>
-                                <div>
-                                  <span className="text-slate-400 font-sans">Safety Buffer:</span>{' '}
-                                  <strong className="text-slate-800">
-                                    {item.threshold} {item.unit}
-                                  </strong>
-                                </div>
-                                <div>
-                                  <span className="text-slate-400 font-sans">Storage:</span>{' '}
-                                  <strong className="text-slate-800">
-                                    {item.storageLocation || (item.tier === 'EMERGENCY' ? 'Cold-Chain ILR' : 'Shelf Rack 3')}
-                                  </strong>
-                                </div>
-                              </div>
+                  {/* Actions Area */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    {isOut ? (
+                      <div>
+                        <Link
+                          href={`/locator?drug=${item.drugId}`}
+                          className="w-full h-9 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Network className="w-3.5 h-3.5" />
+                          <span>Find in Nearby Clinics (Referral) →</span>
+                        </Link>
+                        <div className="flex items-center justify-center pt-2">
+                          <button
+                            onClick={() => openRestockModal(item.drugId)}
+                            className="text-[11px] text-slate-500 hover:text-teal-700 font-semibold hover:underline flex items-center gap-1"
+                            type="button"
+                          >
+                            <PackagePlus className="w-3 h-3 text-teal-600" />
+                            <span>+ Inward delivery restock</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openDispenseModal(item)}
+                            className="flex-1 h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                            type="button"
+                          >
+                            <MinusCircle className="w-3.5 h-3.5" />
+                            <span>Dispense...</span>
+                          </button>
+                          <button
+                            onClick={() => handleQuickDispense(item.drugId)}
+                            className="h-9 px-3 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-semibold rounded-lg transition-colors"
+                            title="Quick Dispense 1 unit"
+                            type="button"
+                          >
+                            -1
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] pt-2 text-slate-500">
+                          <button
+                            onClick={() => openRestockModal(item.drugId)}
+                            className="hover:text-teal-700 font-medium hover:underline flex items-center gap-1"
+                            type="button"
+                          >
+                            <PackagePlus className="w-3 h-3 text-teal-600" />
+                            <span>+ Restock delivery</span>
+                          </button>
+                          <Link
+                            href={`/locator?drug=${item.drugId}`}
+                            className="hover:text-teal-700 font-medium hover:underline flex items-center gap-1"
+                          >
+                            <Network className="w-3 h-3 text-teal-600" />
+                            <span>Check network</span>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        /* ===================================================================== */
+        /* COMPACT REASSURANCE STATE (RULE: WHEN ALL EMERGENCY STOCK NOMINAL)   */
+        /* ===================================================================== */
+        <div className="bg-white rounded-xl border border-emerald-200 p-6 mb-8 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  ✓ All emergency stock nominal — no action required
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  All critical Tier 1 life-saving injectables (ASV, ARV, Adrenaline) are fully stocked and safely above designated clinical buffers.
+                </p>
+              </div>
+            </div>
 
-                              <div className="flex items-center gap-3 text-xs">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openRestockModal(item.drugId);
-                                  }}
-                                  className="text-teal-700 hover:text-teal-900 font-semibold hover:underline"
-                                  type="button"
-                                >
-                                  + Inward Restock
-                                </button>
-                                <span className="text-slate-300">·</span>
-                                <Link
-                                  href={`/locator?drug=${item.drugId}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-slate-600 hover:text-teal-700 font-medium hover:underline flex items-center gap-1"
-                                >
-                                  <Network className="w-3 h-3 text-teal-600" />
-                                  <span>Locate nearby stock</span>
-                                </Link>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+            <Link
+              href="/rapid-desk"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors shrink-0"
+            >
+              View Full Dispensary Ledger →
+            </Link>
           </div>
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* SECTION B: ADEQUATE / NOMINAL EMERGENCY FORMULARY RESERVES            */}
+      {/* ===================================================================== */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+              Nominal Emergency Reserves ({nominalEmergencyItems.length} Adequately Stocked)
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Emergency drugs currently meeting safety buffer requirements. Displayed with calm styling to preserve triage signal.
+            </p>
+          </div>
+        </div>
+
+        {nominalEmergencyItems.length === 0 ? (
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500 text-center font-mono">
+            No emergency drugs are currently at nominal stock levels.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-3 px-4 w-[35%]">Emergency Medicine</th>
+                    <th className="py-3 px-4 w-[20%]">Storage & Buffer</th>
+                    <th className="py-3 px-4 w-[18%]">Available Shelf Stock</th>
+                    <th className="py-3 px-4 w-[12%]">Status</th>
+                    <th className="py-3 px-4 w-[15%] text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {nominalEmergencyItems.map((item) => (
+                    <tr key={item.drugId} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900 text-sm">{item.drugName}</span>
+                          <span className="text-xs text-slate-500 font-normal">
+                            {item.genericName} · {item.form}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-slate-600 font-mono text-xs">
+                        <div>{item.storageLocation || 'Cold-Chain ILR 2'}</div>
+                        <div className="text-[11px] text-slate-400 font-sans">
+                          Buffer: {item.threshold} {item.unit}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-baseline gap-1.5 font-mono">
+                          <span className="text-base font-bold text-emerald-700">
+                            {item.quantity}
+                          </span>
+                          <span className="text-xs text-slate-400 font-sans font-normal">
+                            {item.unit}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                          In Stock
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleQuickDispense(item.drugId)}
+                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold rounded border border-teal-200 shadow-2xs transition-all active:scale-95 text-xs"
+                            title="1-Tap Quick Dispense (-1)"
+                            type="button"
+                          >
+                            -1
+                          </button>
+                          <button
+                            onClick={() => openDispenseModal(item)}
+                            className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded shadow-2xs transition-colors text-xs"
+                            type="button"
+                          >
+                            Dispense
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </section>
     </WorkstationShell>
   );
 }
 
-export default function RapidDeskPage() {
+export default function EmergencyPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Loading Rapid Desk...</div>}>
-      <RapidDeskContent />
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Loading Emergency Triage...</div>}>
+      <EmergencyTriageContent />
     </Suspense>
   );
 }

@@ -1,136 +1,131 @@
 # Product Requirements Document: Meditory
 
-**Tagline:** Last-Mile Healthcare Inventory & Real-Time Medicine Availability for Bharat
-**Version:** 1.0
-**Status:** Draft — Hackathon MVP (Build Bharat Tour, WeMakeDevs × AWS, "Ship It" track)
-**Owner:** Mayank
+**Tagline:** Clinic-to-Clinic Healthcare Inventory & Emergency Referral Network for Bharat  
+**Version:** 2.0  
+**Status:** Approved — Hackathon MVP (Build Bharat Tour, WeMakeDevs × AWS, "Ship It" track)  
+**Owner:** Mayank  
 
 ---
 
 ## 1. Overview
 
-Meditory is a serverless, mobile-first platform that closes the gap between what public health facilities (Sub-Centres, PHCs, CHCs) actually have on their shelves and what district administrators and citizens believe they have. It replaces slow, paper-driven, or desktop-form-based inventory logging with single-tap dispensing/restocking actions that commit atomically to the cloud, and exposes that data through a zero-authentication public search portal.
+Meditory is a serverless, mobile-first inventory and emergency referral platform designed for public primary healthcare clinics (Sub-Centres, PHCs, CHCs) across Bharat. 
 
-The platform has two faces:
-- **Pharmacist Rapid Desk** — an internal, role-gated operational dashboard for facility staff.
-- **Citizen Availability Board** — a public, unauthenticated search portal for patients, families, and ASHAs.
+Rather than exposing drug searches to untrained citizens—who cannot clinically evaluate drug indications or formulations—Meditory is an **internal, clinic-to-clinic operational system** built exclusively for frontline clinic staff (pharmacists, ANMs, staff nurses).
 
-This PRD extends the original hackathon research blueprint by formalizing a **role-based authentication and authorization system**, replacing the "deferred / simple facility PIN" approach. For the MVP, scope is kept to **two roles** — public Citizen search and authenticated Pharmacist — with Facility Admin and District Admin roles planned for a post-hackathon rollout (see §11).
+The platform addresses two operational imperatives:
+- **Clinic Rapid Desk** — a single-tap dispensing and restocking operational interface that replaces cumbersome paper registers with atomic cloud commits (<10ms).
+- **Inter-Clinic Referral & Stock Locator** — an internal network search that allows a healthcare worker whose clinic is out of an essential drug (e.g., Anti-Snake Venom, Anti-Rabies Vaccine) to instantly locate which neighboring clinic has verified stock, enabling immediate, life-saving patient referrals or inter-clinic stock balancing.
+
+Meditory enforces a **single authenticated role (Facility Worker)** with **strict clinic-to-clinic mutation isolation**: staff can only mutate their own clinic's inventory, but can view neighboring stock for emergency referral.
 
 ---
 
 ## 2. Problem Statement
 
-- Essential medicine availability at primary-tier public facilities ranges from **17%–51%** of national targets, with stock-outs persisting **4–14 weeks**.
-- Peripheral staff (pharmacists, ANMs) are clinically overloaded and abandon complex digital entry in favor of paper registers, so central dashboards reflect stale, theoretical stock levels.
-- District administrators cannot proactively redirect surplus stock because local consumption surges surface weeks after the fact.
-- Citizens and ASHAs travel blindly between facilities searching for medicines (e.g., Anti-Snake Venom, Anti-Rabies Vaccine, ORS), incurring transport costs, lost wages, and — for time-critical cases like snakebite or rabies exposure — risk to life.
-- Out-of-pocket pharmaceutical spending is ~70% of household health expenditure, largely driven by patients turning to costly private pharmacies when public stock is depleted.
+- **High Stock-Outs in Rural Facilities:** Primary healthcare centers regularly face stock-outs of essential emergency medicines (Anti-Snake Venom, Anti-Rabies Vaccine, ORS, Paracetamol), persisting for 4 to 14 weeks.
+- **Referral Blindness:** When an emergency patient arrives (e.g., snakebite, rabid dog bite) at a Sub-Centre or PHC with zero vials, the clinic worker has no visibility into neighboring facilities. They are forced to send patients on blind journeys across rural districts, causing tragic delays in critical care.
+- **Clinical Overload & Abandoned Software:** Peripheral dispensary staff are overwhelmed by OPD queues. Complex desktop ERPs and multi-step forms are abandoned for paper registers, leaving district health registries completely out of sync with physical shelves.
+- **Patient Self-Medication Hazard:** Exposing raw medicine searches directly to citizens promotes unguided self-medication and confusion between generic variants, strengths, and contraindications. Healthcare inventory must be managed and interpreted by clinical workers at the point of care.
+
+---
 
 ## 3. Goals
 
 | Goal | Success Signal |
 |---|---|
-| Make inventory logging effortless enough that staff actually do it | Dispense/restock action takes ≤1 tap, ≤10ms DB commit |
-| Give administrators real-time, trustworthy stock visibility | Facility stock data reflects last real dispensing event, not batch reconciliation |
-| Eliminate information asymmetry for citizens | Public search returns live stock status with verification timestamp, no login required |
-| Enforce accountability without adding friction | Every stock mutation is attributable to a role and identity via audit log |
-| Support a credible multi-facility, multi-district rollout | Role model scales from single PHC pilot to district/state hierarchy |
+| **Zero-Lag Inventory Logging** | Dispense/restock action takes ≤1 tap and commits atomically to DynamoDB in ≤10ms |
+| **Emergency Clinic-to-Clinic Referrals** | When local stock is 0, clinic staff can locate the nearest facility with verified stock in ≤2 seconds |
+| **Strict Clinic Multi-Tenancy** | Clinic A's workers can never mutate Clinic B's inventory; cross-facility writes return a strict `403 Forbidden` |
+| **Tamper-Evident Accountability** | Every dispense and restock mutation is permanently recorded in an immutable facility audit trail |
+| **Proactive Stockout Prevention** | Amazon CloudWatch Metric Alarms trigger when critical emergency drugs fall below safety thresholds |
+
+---
 
 ## 4. Non-Goals (Out of Scope for MVP)
 
-- OCR-based invoice scanning
-- Barcode/hardware scanner integration
-- Central procurement bidding / ERP workflows
-- Full ABDM/ABHA health-record linkage (planned post-MVP, see §11)
-- SMS/USSD/IVR fallback channels (planned post-MVP, see §11)
+- Public / Patient-facing unauthenticated self-diagnosis or medicine search (explicitly eliminated).
+- OCR-based physical invoice scanning.
+- Hardware barcode/RFID scanners.
+- Central state procurement bidding & financial billing.
+- ABDM/ABHA electronic health record linkage (post-MVP, see §11).
 
 ---
 
 ## 5. User Roles & Personas
 
-Meditory introduces **two roles** for MVP, spanning the internal (authenticated) system and the external (public) portal. (Facility Admin and District Admin roles are deferred — see §11 Future Scope.)
+Meditory MVP operates with **a single authenticated role: Facility Worker**.
 
-### 5.1 Citizen / Frontline Health Worker (Public — No Login)
-- **Who:** Patients, families, ASHAs, general public.
-- **Access:** Fully anonymous. No account, password, or personal data required.
-- **Can do:** Search medicines by generic/brand/symptom name; view stock status, verification timestamp, and facility location across nearby facilities; get redirected to the nearest facility with confirmed stock.
-- **Cannot do:** View internal audit logs, modify inventory, see facility-internal notes.
-
-### 5.2 Pharmacist / Dispensary Worker (Facility Role)
-- **Who:** Pharmacists, ANMs, dispensary staff at a Sub-Centre/PHC/CHC.
-- **Access:** Facility-scoped login (see §6 Auth Model).
-- **Can do:** View own facility's inventory dashboard; Dispense (-1); Restock (+10/+50/+100); see own facility's audit trail.
-- **Cannot do:** View or modify other facilities' inventory; access district-level analytics; manage users.
+### 5.1 Facility Worker / Clinic Pharmacist (Authenticated — Clinic Scoped)
+- **Who:** Pharmacists, ANMs, dispensary workers, and Medical Officers at Sub-Centres, PHCs, and CHCs.
+- **Authentication:** Login using **Work Email / Staff ID** + **Secure Password** (bcrypt hashed, enterprise-grade security).
+- **Permissions & Capabilities:**
+  - **Own Clinic Inventory:** View full live stock levels, categorized by IPHS tiers (Emergency, Essential, Routine).
+  - **1-Tap Dispense (-1):** Single tap to dispense with optimistic UI update and atomic DynamoDB conditional write.
+  - **Stepped Restock (+10 / +50 / +100):** Quick incremental batch restocking.
+  - **Facility Audit Log:** View immutable audit log of who dispensed/restocked what and when.
+  - **Inter-Clinic Stock Locator:** Search the district clinic network to find which neighboring clinic has stock when local inventory is depleted, along with facility contact and distance.
+- **Strict Boundary (Cannot Do):** Cannot view other clinics' audit logs or mutate any other clinic's inventory.
 
 ---
 
-## 6. Multi-Role Authentication & Authorization
+## 6. Clinic-to-Clinic Authentication & Authorization
 
 ### 6.1 Design Principles
-1. **Zero friction for the public.** The Citizen Availability Board never requires authentication — this is a hard product constraint, not just an MVP shortcut.
-2. **Fast enough for a busy clinic.** Facility-role login must not slow down patient care — target under 10 seconds to authenticate.
-3. **Scoped by default.** Every authenticated session is bound to exactly one facility (Pharmacist); no implicit cross-facility visibility.
-4. **Auditable.** Every inventory mutation is tied to an authenticated identity (`workerPin` / `userId`), never anonymous, for the audit log.
+1. **All Endpoints Authenticated:** Zero unauthenticated public access. Every API request requires a valid, signed JWT.
+2. **Secure, Enterprise-Grade Authentication:** Frontline staff authenticate using their **Work Email / Username** and **Secure Password** (hashed with `bcrypt`), preventing brute-force attacks and meeting healthcare data standards.
+3. **Cryptographic Clinic Scoping:** The issued JWT contains `{ role: "facility_worker", facilityId, userId, exp }`.
+4. **Clinic-to-Clinic Mutation Isolation:** AWS API Gateway + Lambda Authorizer verifies that the `facilityId` in the JWT matches the target facility in the mutation request. Any cross-clinic mutation is rejected with `403 Forbidden`.
+5. **Auditable Attribution:** Every inventory mutation persists the `userId` in DynamoDB.
 
-### 6.2 Roles & Permission Matrix
+### 6.2 Permission Matrix
 
-| Capability | Citizen (Public) | Pharmacist |
+| Capability | Facility Worker (Own Clinic) | Facility Worker (Neighboring Clinic) |
 |---|:---:|:---:|
-| Public medicine search | ✅ | — |
-| View own facility inventory | — | ✅ |
-| Dispense (-1) | — | ✅ |
-| Restock (+10/+50/+100) | — | ✅ |
-| View facility audit log | — | ✅ (own facility) |
+| View Live Inventory | ✅ | ❌ (Private internal shelf view) |
+| Search Medicine Availability for Referral | ✅ | ✅ (Aggregated stock status & location) |
+| 1-Tap Dispense (-1) | ✅ | ❌ (Strictly Forbidden — 403) |
+| Stepped Restock (+10/+50) | ✅ | ❌ (Strictly Forbidden — 403) |
+| View Facility Audit Trail | ✅ | ❌ (Strictly Forbidden — 403) |
+| Receive Low-Stock Alarm | ✅ | ❌ |
 
-*Facility metadata editing, staff management, facility onboarding, and cross-facility analytics are deferred to the Facility Admin / District Admin roles — see §11 Future Scope.*
+### 6.3 Authentication Flow
+1. Staff opens Meditory on clinic phone/tablet or desktop.
+2. Enters **Work Email / Username** (e.g. `pharmacist.alibag@health.gov.in`) and **Password**.
+3. Auth Lambda verifies password against salted `bcrypt` hash in DynamoDB, resolves assigned `facilityId`, and returns a signed JWT.
+4. JWT is stored in client session storage and passed as `Authorization: Bearer <token>` on all requests.
+5. Lambda authorizer inspects token, validates expiration & signature, and extracts `facilityId` and `userId`.
 
-### 6.3 Authentication Flow (MVP → Production Path)
+### 6.4 Data Model (Amazon DynamoDB Single-Table Design)
 
-**MVP (24-hour build) — Fast Path:**
-- Each facility is provisioned with a 4-digit **Facility PIN** plus an individual **Worker ID/PIN** combination at seed time.
-- Login screen: enter Facility ID → enter personal PIN (single role: Pharmacist).
-- Session issues a signed, short-lived JWT carrying `{ role: "pharmacist", facilityId, userId }`, stored in local storage/session, attached to every API call.
-- API Gateway + Lambda authorizer validates the JWT and enforces facility scope on every write (`ConditionExpression` on facility ownership) before touching DynamoDB.
-- No email/password/OTP required for MVP — optimized for staff with low digital literacy and shared devices.
-
-**Production Hardening (Post-MVP):**
-- Upgrade PIN-only auth to **Amazon Cognito User Pools** with role-based Cognito Groups (`pharmacist`, plus `facility_admin`/`district_admin` once those roles are built — see §11), phone/OTP-based login for individual accountability.
-- Add mandatory PIN rotation and session timeout per facility device.
-
-### 6.4 Data Model Addition — User/Role Entity
-
-| Entity Type | Partition Key (PK) | Sort Key (SK) | Attributes | Access Pattern |
-|---|---|---|---|---|
-| **User/Staff Record** | `FACILITY#<FacilityID>` | `USER#<UserID>` | `role`, `name`, `pinHash`, `status`, `createdAt`, `lastLoginAt` | Authenticate staff and resolve facility scope at login |
-
-This extends the original single-table design (Facility Metadata, Inventory Record, Global Drug Registry, Inventory Audit Log) from the base research blueprint without introducing relational joins. A `DISTRICT#<DistrictID>` entity is deferred until the District Admin role is built — see §11.
-
-### 6.5 Authorization Enforcement
-- Every mutation Lambda (`dispenseMedicineHandler`, `restockHandler`) validates the caller's JWT scope against the `facilityId` in the request path/body before executing the DynamoDB `UpdateCommand` — a Pharmacist token for Facility A cannot mutate Facility B's inventory even if the request is crafted manually.
+| Entity Type | Partition Key (PK) | Sort Key (SK) | GSI1-PK | GSI1-SK | Key Attributes |
+|---|---|---|---|---|---|
+| **Facility Metadata** | `FACILITY#<FacilityId>` | `METADATA` | `DISTRICT#<DistrictId>` | `FACILITY#<FacilityId>` | `name`, `type` (PHC/CHC/SC), `phone`, `lat`, `lng` |
+| **Worker Record** | `FACILITY#<FacilityId>` | `USER#<UserId>` | `USER#<Email>` | `METADATA` | `name`, `email`, `passwordHash`, `role`, `status` |
+| **Inventory Item** | `FACILITY#<FacilityId>` | `DRUG#<DrugId>` | `DRUG#<DrugId>` | `STATUS#<InStock\|Low\|Out>` | `drugName`, `quantity`, `unit`, `threshold`, `updatedAt` |
+| **Inventory Audit Log**| `FACILITY#<FacilityId>` | `AUDIT#<Timestamp>`| — | — | `action` (DISPENSE/RESTOCK), `delta`, `drugId`, `workerId` |
+| **Global Drug Registry**| `DRUG#<DrugId>` | `METADATA` | — | — | `genericName`, `category`, `form`, `isCritical` |
 
 ---
 
 ## 7. Core Features
 
-### 7.1 Pharmacist Rapid Desk (Authenticated)
-- Facility-scoped login (Pharmacist, §6.3)
-- IPHS-tiered inventory dashboard: emergency drugs (ARV, ASV) surfaced first
-- One-tap **Dispense (-1)** with optimistic UI update + background mutation; auto-revert + alert on failure
-- Stepped **Restock (+10 / +50 / +100)** with confirmation
-- Facility-scoped audit trail view
+### 7.1 Clinic Rapid Desk (Internal Operational Dashboard)
+- **Emergency Priority View:** Life-critical drugs (Anti-Snake Venom, Anti-Rabies Vaccine, Adrenaline) are pinned to the top with immediate visual status (`IN_STOCK`, `LOW_STOCK`, `OUT_OF_STOCK`).
+- **1-Tap Dispense (-1):** Tap the dispense button $\rightarrow$ UI updates instantaneously (0ms optimistic latency) while background Lambda executes an atomic DynamoDB conditional decrement:
+  $$\text{ConditionExpression: } \text{quantity} > 0$$
+- **Stepped Restock (+10 / +50 / +100):** Quick one-click increments with instant confirmation.
+- **Facility Audit Trail:** Tab to inspect all historical actions, timestamps, and staff attributions.
 
-### 7.2 Citizen Availability Board (Public, No Auth)
-- Search by generic name, brand name, or symptom (e.g., "Snake venom," "Fever," "ORS")
-- Results ranked by proximity within the administrative district
-- Stock badges: **In Stock** (with verification timestamp) / **Critically Low** / **Out of Stock**
-- Automatic redirect suggestion to nearest facility with confirmed stock when the closest one is out
-- Access via direct link or QR code posted at facility entrances
+### 7.2 Inter-Clinic Referral & Stock Locator
+- Triggered automatically when local stock hits **0** or is critically low, or searchable on-demand by drug name.
+- Queries GSI-1 to surface neighboring clinics in the district that have confirmed stock of the required medicine.
+- Displays clinic name, distance/location, facility phone number, and verified stock count so the healthcare worker can coordinate an immediate patient transfer or inter-clinic supply shift.
 
-### 7.3 Observability & Alerts
-- CloudWatch log streams for all mutation Lambdas
-- CloudWatch Metric Alarms trigger when a facility's critical-drug quantity drops below its threshold
-- District Admin dashboard surfaces active alarms across all facilities in-scope
+### 7.3 Observability & Low-Stock Alerts
+- **CloudWatch Custom Metrics:** Dispensing Lambdas emit custom metrics (`StockLevel`, `DispenseLatency`) via CloudWatch Embedded Metric Format (EMF).
+- **CloudWatch Metric Alarms:** Alarm triggers automatically when critical drugs (e.g. Anti-Snake Venom) drop below the clinic's safety threshold (e.g., $< 5$ vials).
+- **Desk Alert Banner:** Active CloudWatch alarm state is visualized directly on the clinic desk.
 
 ---
 
@@ -138,47 +133,43 @@ This extends the original single-table design (Facility Metadata, Inventory Reco
 
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-1 | System shall allow unauthenticated public search of medicine availability across facilities | P0 |
-| FR-2 | System shall require role-based authentication for any inventory-mutating action | P0 |
-| FR-3 | System shall scope every authenticated session to exactly one facility or one district | P0 |
-| FR-4 | System shall record every dispense/restock event with `workerPin`/`userId`, timestamp, and delta in an immutable audit log | P0 |
-| FR-5 | System shall atomically update inventory counts using conditional expressions to prevent negative stock and race conditions | P0 |
-| FR-6 | System shall trigger a CloudWatch alarm when a facility's stock for a critical drug crosses below its configured threshold | P0 |
-| FR-7 | Public search shall suggest the nearest alternative facility when the closest match is out of stock | P1 |
-| FR-8 | System shall reject any mutation request where the authenticated identity's facility scope does not match the target facility | P0 |
+| FR-1 | All endpoints shall require JWT authentication; unauthenticated requests shall be rejected with 401 Unauthorized | P0 |
+| FR-2 | System shall strictly isolate inventory mutations so that staff can only mutate their own clinic's stock | P0 |
+| FR-3 | System shall reject any cross-facility mutation attempt with 403 Forbidden | P0 |
+| FR-4 | System shall provide an Inter-Clinic Stock Locator allowing staff to find neighboring clinics with stock for patient referral | P0 |
+| FR-5 | Dispense actions shall be atomic and conditional, guaranteeing stock never drops below 0 | P0 |
+| FR-6 | Every dispense and restock event shall be immutably recorded in the clinic audit log with staff identity and timestamp | P0 |
+| FR-7 | System shall emit CloudWatch metrics and trigger alarms when critical drug levels cross below configured thresholds | P0 |
+| FR-8 | UI shall optimistically reflect dispensing actions with zero perceptible lag for high-volume clinic queues | P0 |
+
+---
 
 ## 9. Non-Functional Requirements
 
-- **Latency:** Inventory mutations committed in <10ms at the DynamoDB layer; UI reflects change optimistically and instantly.
-- **Availability:** Serverless, scale-to-zero architecture; no maintenance windows required.
-- **Low-bandwidth resilience:** Functional on constrained rural mobile networks; minimal payloads.
-- **Security:** All authenticated endpoints protected by JWT + Lambda authorizer; PINs stored hashed, never in plaintext; public endpoints are strictly read-only.
-- **Auditability:** No inventory mutation may occur without an attributable, logged identity.
-- **Accessibility:** Public portal usable on low-end smartphones with minimal data entry (search-only interaction).
+- **Latency:** Inventory mutations committed to DynamoDB in <10ms; frontend reacts in 0ms optimistically.
+- **Mobile-First & Low-Bandwidth:** Designed for low-cost Android tablets and smartphones used by clinic staff on 3G/4G rural networks.
+- **Security:** Bcrypt-hashed password storage, short-lived signed JWTs, API Gateway perimeter authorization, server-side conditional expression validation.
+- **Reliability:** Serverless scale-to-zero architecture on AWS (zero server maintenance, zero idle cost).
 
 ---
 
 ## 10. Technical Architecture Summary
 
-- **Frontend:** React + Next.js + Tailwind CSS, mobile-first, optimistic rendering; hosted on AWS Amplify or S3 + CloudFront.
-- **API Layer:** Amazon API Gateway (HTTP API) with a Lambda authorizer enforcing role/scope from the JWT before routing to handlers.
-- **Compute:** AWS Lambda, Node.js 20.x, AWS SDK v3 (`@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`).
-- **Data:** Amazon DynamoDB, single-table design, On-Demand capacity; GSI-1 (`DRUG#<DrugID>` / `STATUS#<StockStatus>`) powers cross-facility public search.
-- **Observability:** Amazon CloudWatch for logs and low-stock metric alarms.
-- **Auth (MVP):** Facility/District PIN + signed JWT session.
-- **Auth (Production path):** Amazon Cognito User Pools with role-based Groups, OTP login.
+- **Frontend:** Next.js (App Router) + Tailwind CSS + Lucide Icons + TanStack Query; hosted on AWS Amplify or S3 + CloudFront.
+- **API Layer:** Amazon API Gateway (HTTP API v2) with a Lambda Authorizer protecting all routes.
+- **Compute:** AWS Lambda (Node.js 20.x, TypeScript), AWS SDK v3 (`@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`).
+- **Data:** Amazon DynamoDB Single-Table Design with GSI-1 for inter-clinic referral search.
+- **Monitoring:** Amazon CloudWatch Logs, Custom EMF Metrics, and CloudWatch Metric Alarms.
+- **Infrastructure as Code:** AWS CDK (TypeScript) for reproducible 1-click cloud deployment.
 
 ---
 
 ## 11. Future Scope (Post-Hackathon)
 
-- **Facility Admin role:** Elevated facility-scoped role (PHC in-charge) that can do everything a Pharmacist can, plus add/remove Pharmacist accounts for their facility, edit facility metadata (contact, hours, geo-coordinates), view facility-level consumption trends, and set/override low-stock thresholds.
-- **District Health Administrator role:** District-scoped, read/coordination-only role that can view real-time stock across all facilities in a district, identify surplus/shortage patterns for redistribution, view CloudWatch-driven low-stock alerts district-wide, onboard new facilities and Facility Admins, and export consumption reports — without direct dispense/restock access.
-- **ABDM/ABHA integration:** Link dispensed medicines to citizens' electronic health records to reduce duplicate prescriptions.
-- **UHI-compliant open APIs:** Allow authorized third-party apps to query public stock data.
-- **ML-driven demand forecasting:** Use DynamoDB streams + Amazon Bedrock/SageMaker to predict seasonal surges (e.g., ASV demand in monsoon) and recommend proactive redistribution.
-- **Multi-channel access:** SMS/USSD via Amazon SNS and regional-language IVR for citizens and ASHAs without smartphones.
-- **Cognito-based production auth**, with individual OTP login, session revocation, and PIN rotation policies (see §6.3).
+- **Formal Inter-Clinic Stock Transfer Orders:** Two-phase commit transfer workflow where Clinic A initiates a surplus transfer and Clinic B confirms receipt.
+- **District Chief Medical Officer (CMO) Dashboard:** Read-only district aggregation for macro-level supply planning.
+- **ABDM/ABHA Integration:** Linking dispensed medicines to Ayushman Bharat Health Accounts.
+- **Automated Reordering via GeM:** Integration with Government e-Marketplace for automatic replenishment triggers.
 
 ---
 
@@ -186,18 +177,8 @@ This extends the original single-table design (Facility Metadata, Inventory Reco
 
 | Metric | Target |
 |---|---|
-| Dispense action → DB commit latency | <10ms (shown via CloudWatch) |
-| Public search → facility result | Real-time, no stale batch data |
-| Role-boundary enforcement | Demonstrated 403 on cross-facility access attempt |
-| Low-stock alarm trigger | Demonstrated ALARM state transition live in console |
-| End-to-end flow | Citizen search → Out of Stock → Pharmacist restock → Public card updates, live on deployed URL |
-
----
-
-## 13. Risks & Mitigations
-
-| Risk | Mitigation |
-|---|---|
-| PIN-only auth is weak for production | Explicitly scoped as MVP-only; Cognito upgrade path defined in §6.3 |
-| Facility staff resist any login step, even PIN | Kept to Facility ID + PIN, target <10s login, no email/password |
-| Role-scope bugs allow cross-facility writes | Enforced server-side via Lambda authorizer + conditional expressions, not client-side only (FR-8) |
+| **Dispense Latency** | Demonstrated <10ms DynamoDB commit latency in CloudWatch |
+| **Zero-Lag UX** | 1-tap dispense with instant optimistic UI update |
+| **Security Enforcement** | Demonstrated 403 Forbidden when attempting cross-clinic mutation |
+| **Emergency Referral Workflow** | Clinic A hits 0 stock on Anti-Snake Venom $\rightarrow$ Inter-Clinic Locator identifies Clinic B with stock $\rightarrow$ displays referral contact |
+| **CloudWatch Alarm Transition** | Live demonstration of CloudWatch alarm flipping to `ALARM` state when critical medicine drops below threshold |

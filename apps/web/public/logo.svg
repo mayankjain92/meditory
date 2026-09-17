@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" fill="none">
+  <g transform="translate(4, 8)">
+    <!-- Medical Cross & Inventory Box Badge -->
+    <rect x="2" y="2" width="44" height="44" rx="10" fill="#0F4C5C"/>
+    <path d="M24 13V35M13 24H35" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+    <rect x="26" y="26" width="14" height="14" rx="3" fill="#14B8A6" fill-opacity="0.9"/>
+    <path d="M30 33H36M33 30V36" stroke="#0F4C5C" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="64" y="38" font-family="'Inter', sans-serif" font-size="28" font-weight="700" fill="#0F4C5C" letter-spacing="-0.5px">Meditory</text>
+  <text x="64" y="50" font-family="'Inter', sans-serif" font-size="10.5" font-weight="600" fill="#64748B" letter-spacing="1.2px">CLINICAL INVENTORY SYSTEM</text>
+</svg>

@@ -22,6 +22,8 @@
     "ddb:stop": "docker compose down",
     "ddb:inspect": "pnpm --filter api inspect",
     "seed": "pnpm --filter api seed",
+    "inspect": "pnpm --filter api inspect",
+    "test": "pnpm --filter api test:handlers",
     "test:handlers": "pnpm --filter api test:handlers"
   },
   "keywords": [

@@ -9,18 +9,19 @@ import { TABLE_NAMES, INDEX_NAMES } from '@meditory/shared';
 
 export { TABLE_NAMES, INDEX_NAMES };
 
-const isLocal = !!process.env.DYNAMODB_ENDPOINT;
+export const isLocal = !!process.env.DYNAMODB_ENDPOINT || !process.env.AWS_LAMBDA_FUNCTION_NAME;
+export const localEndpoint = process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000';
 
 /**
  * DynamoDB Client with Dual-Mode configuration:
- * 1. If DYNAMODB_ENDPOINT is provided (e.g. http://localhost:8000), connects to local Docker container.
+ * 1. If running locally or DYNAMODB_ENDPOINT is provided, connects to local Docker container.
  * 2. Otherwise connects to real AWS using standard credential provider chain.
  */
 export const ddbClient = new DynamoDBClient({
   region: process.env.AWS_REGION || 'ap-south-1',
   ...(isLocal
     ? {
-        endpoint: process.env.DYNAMODB_ENDPOINT,
+        endpoint: localEndpoint,
         credentials: {
           accessKeyId: 'localMockKey',
           secretAccessKey: 'localMockSecret',

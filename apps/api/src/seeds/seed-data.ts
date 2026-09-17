@@ -12,7 +12,7 @@ import {
   MasterDrug,
   StockStatus,
 } from '@meditory/shared';
-import { docClient, ensureTablesExist } from '../shared/ddb.js';
+import { docClient, ensureTablesExist, isLocal, localEndpoint } from '../shared/ddb.js';
 
 const SEED_PASSWORD = 'Password@123';
 const hashedPassword = bcrypt.hashSync(SEED_PASSWORD, 10);
@@ -200,7 +200,7 @@ export async function runSeed(): Promise<void> {
   console.log(`\n======================================================`);
   console.log(`[Seed] Initializing Meditory Multi-Table Seed Sequence...`);
   console.log(`[Seed] Tables: ${Object.values(TABLE_NAMES).join(', ')}`);
-  console.log(`[Seed] Endpoint: ${process.env.DYNAMODB_ENDPOINT || 'AWS Cloud'}`);
+  console.log(`[Seed] Endpoint: ${isLocal ? localEndpoint : 'AWS Cloud'}`);
   console.log(`======================================================\n`);
 
   await ensureTablesExist();

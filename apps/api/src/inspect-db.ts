@@ -1,10 +1,10 @@
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { docClient, TABLE_NAMES } from './shared/ddb.js';
+import { docClient, TABLE_NAMES, isLocal, localEndpoint } from './shared/ddb.js';
 
 async function inspectDatabase() {
   console.log(`\n======================================================`);
   console.log(`🔍 [Meditory DDB Inspector] Multi-Table Overview`);
-  console.log(`   Endpoint: ${process.env.DYNAMODB_ENDPOINT || 'AWS Cloud'}`);
+  console.log(`   Endpoint: ${isLocal ? localEndpoint : 'AWS Cloud'}`);
   console.log(`======================================================\n`);
 
   // 1. Health Facilities Table

@@ -96,15 +96,16 @@ Meditory MVP operates with **a single authenticated role: Facility Worker**.
 4. JWT is stored in client session storage and passed as `Authorization: Bearer <token>` on all requests.
 5. Lambda authorizer inspects token, validates expiration & signature, and extracts `facilityId` and `userId`.
 
-### 6.4 Data Model (Amazon DynamoDB Single-Table Design)
+### 6.4 Data Model (Amazon DynamoDB Multi-Table Design)
 
-| Entity Type | Partition Key (PK) | Sort Key (SK) | GSI1-PK | GSI1-SK | Key Attributes |
+Meditory uses a clean, modular multi-table schema providing clear domain separation, zero attribute pollution, and intuitive developer/admin visibility:
+
+| Table Name | Partition Key (PK) | Sort Key (SK) | Secondary Index (GSI) | Key Attributes | Access Pattern |
 |---|---|---|---|---|---|
-| **Facility Metadata** | `FACILITY#<FacilityId>` | `METADATA` | `DISTRICT#<DistrictId>` | `FACILITY#<FacilityId>` | `name`, `type` (PHC/CHC/SC), `phone`, `lat`, `lng` |
-| **Worker Record** | `FACILITY#<FacilityId>` | `USER#<UserId>` | `USER#<Email>` | `METADATA` | `name`, `email`, `passwordHash`, `role`, `status` |
-| **Inventory Item** | `FACILITY#<FacilityId>` | `DRUG#<DrugId>` | `DRUG#<DrugId>` | `STATUS#<InStock\|Low\|Out>` | `drugName`, `quantity`, `unit`, `threshold`, `updatedAt` |
-| **Inventory Audit Log**| `FACILITY#<FacilityId>` | `AUDIT#<Timestamp>`| — | — | `action` (DISPENSE/RESTOCK), `delta`, `drugId`, `workerId` |
-| **Global Drug Registry**| `DRUG#<DrugId>` | `METADATA` | — | — | `genericName`, `category`, `form`, `isCritical` |
+| **`Meditory_Facilities`** | `id` (e.g. `PHC-ALIBAG-01`) | — | — | `name`, `type`, `phone`, `address`, `districtName`, `latitude`, `longitude` | Look up clinic metadata and contact for emergency referrals |
+| **`Meditory_Workers`** | `email` (e.g. `rahul.sharma@phc-alibag.in`) | — | — | `id`, `name`, `facilityId`, `passwordHash`, `role`, `status` | Direct $O(1)$ staff login by email and clinic scope resolution |
+| **`Meditory_Inventory`** | `facilityId` (e.g. `PHC-ALIBAG-01`) | `drugId` (e.g. `DRUG-ASV-01`) | `DrugLookupIndex` (`drugId` [PK] + `status` [SK]) | `drugName`, `quantity`, `unit`, `threshold`, `tier`, `isCritical`, `status`, `updatedAt` | Query clinic inventory; Query inter-clinic referrals for emergency medicines |
+| **`Meditory_AuditLogs`** | `facilityId` (e.g. `PHC-ALIBAG-01`) | `timestamp` (ISO string) | — | `action`, `delta`, `previousQuantity`, `newQuantity`, `drugId`, `workerId`, `workerName` | Immutable audit trail for clinic dispensing and restocking events |
 
 ---
 

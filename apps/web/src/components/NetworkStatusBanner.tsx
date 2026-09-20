@@ -71,11 +71,21 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
       return;
     }
     if (pendingCount === 0) {
-      showToast('No pending offline actions. Inventory is up to date.');
+      setIsSyncing(true);
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('meditory:inventory-synced'));
+        }
+        if (onSyncComplete) onSyncComplete();
+        showToast('🔄 Synchronized shelf inventory with DynamoDB cloud.');
+      } finally {
+        setTimeout(() => setIsSyncing(false), 500);
+      }
       return;
     }
 
     try {
+      setIsSyncing(true);
       const res = await syncPendingActions();
       showToast(`Successfully synchronized ${res.syncedCount} queued actions with backend!`);
       if (typeof window !== 'undefined') {
@@ -84,6 +94,8 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
       if (onSyncComplete) onSyncComplete();
     } catch (err: unknown) {
       showToast((err as Error).message || 'Sync failed.');
+    } finally {
+      setIsSyncing(false);
     }
   };
 

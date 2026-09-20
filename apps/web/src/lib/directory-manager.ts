@@ -31,75 +31,9 @@ export type DirectoryEntry = NearbyClinic & {
 };
 
 /**
- * Resilient Pre-Seeded Directory of Nearby Health Clinics in District
- * Guaranteed to be available with zero network connectivity
+ * Resilient Directory of Nearby Health Clinics in District
  */
-export const PRE_SEEDED_CLINICS: NearbyClinic[] = [
-  {
-    id: 'PHC-ALIBAG-01',
-    name: 'Alibag Primary Health Centre',
-    type: 'PHC',
-    phone: '+91 2141 222045',
-    altPhone: '+91 98203 66743',
-    address: 'Near Civil Hospital, Rewas Road, Alibag, Raigad - 402201',
-    taluka: 'Alibag',
-    distance: 'Current Clinic (0 km)',
-    isCurrent: true,
-  },
-  {
-    id: 'PHC-VADKHAL-02',
-    name: 'Vadkhal Primary Health Centre',
-    type: 'PHC',
-    phone: '+91 2143 252110',
-    altPhone: '+91 98331 11223',
-    address: 'NH 66 Junction, Vadkhal Naka, Pen Taluka, Raigad - 402107',
-    taluka: 'Pen',
-    distance: '14 km away',
-    isCurrent: false,
-  },
-  {
-    id: 'CHC-PEN-03',
-    name: 'Pen Community Health Centre',
-    type: 'CHC',
-    phone: '+91 2143 252030',
-    altPhone: '+91 98191 33445',
-    address: 'Sub-District Hospital Complex, Antora Road, Pen, Raigad - 402107',
-    taluka: 'Pen',
-    distance: '28 km away',
-    isCurrent: false,
-  },
-  {
-    id: 'SDH-ROHA-01',
-    name: 'Roha Sub-District Hospital',
-    type: 'SDH',
-    phone: '+91 2194 232025',
-    altPhone: '+91 2144 222120',
-    address: 'Kundalika Marg, Near Old Bus Stand, Roha, Raigad - 402109',
-    taluka: 'Roha',
-    distance: '36 km away',
-    isCurrent: false,
-  },
-  {
-    id: 'PHC-POYNAD-04',
-    name: 'Poynad Primary Health Centre',
-    type: 'PHC',
-    phone: '+91 2141 254012',
-    address: 'Alibag-Pen Road, Poynad, Alibag Taluka, Raigad - 402108',
-    taluka: 'Alibag',
-    distance: '18 km away',
-    isCurrent: false,
-  },
-  {
-    id: 'SDH-MANGAON-05',
-    name: 'Mangaon Sub-District Hospital',
-    type: 'SDH',
-    phone: '+91 2192 252020',
-    address: 'Mumbai-Goa Highway, Mangaon, Raigad - 402104',
-    taluka: 'Mangaon',
-    distance: '48 km away',
-    isCurrent: false,
-  },
-];
+export const PRE_SEEDED_CLINICS: NearbyClinic[] = [];
 
 type ClinicListener = (clinics: NearbyClinic[]) => void;
 let listeners: ClinicListener[] = [];
@@ -124,7 +58,7 @@ export function subscribeToNearbyClinics(listener: ClinicListener): () => void {
 }
 
 /**
- * Get nearby clinics from IndexedDB cache or pre-seeded fallback
+ * Get nearby clinics from IndexedDB cache or empty array
  */
 export async function getNearbyClinics(): Promise<NearbyClinic[]> {
   if (cachedMemoryClinics && cachedMemoryClinics.length > 0) {
@@ -132,7 +66,7 @@ export async function getNearbyClinics(): Promise<NearbyClinic[]> {
   }
 
   if (typeof window === 'undefined') {
-    return PRE_SEEDED_CLINICS;
+    return [];
   }
 
   try {
@@ -148,8 +82,7 @@ export async function getNearbyClinics(): Promise<NearbyClinic[]> {
     console.warn('[DirectoryManager] Could not read IndexedDB clinic cache:', err);
   }
 
-  cachedMemoryClinics = PRE_SEEDED_CLINICS;
-  return PRE_SEEDED_CLINICS;
+  return [];
 }
 
 /**
@@ -168,44 +101,34 @@ export async function fetchAndCacheNearbyClinics(): Promise<NearbyClinic[]> {
 
     if (res && res.facilities && Array.isArray(res.facilities)) {
       const apiClinics: NearbyClinic[] = res.facilities.map((f, index) => {
-        const preseeded = PRE_SEEDED_CLINICS.find((p) => p.id === f.id || p.name === f.name);
         return {
           id: f.id,
           name: f.name,
           type: f.type || 'PHC',
-          phone: f.phone || preseeded?.phone || '+91 2141 222045',
-          altPhone: preseeded?.altPhone,
-          address: f.address || preseeded?.address || `${f.districtName || 'Raigad'} District`,
-          taluka: preseeded?.taluka || f.districtName || 'Raigad',
+          phone: f.phone || f.contactPhone || '+91 2141 222045',
+          altPhone: f.altPhone,
+          address: f.address || `${f.districtName || 'Raigad'} District`,
+          taluka: f.taluka || f.districtName || 'Raigad',
           distance: f.isCurrent
             ? 'Current Clinic (0 km)'
-            : preseeded?.distance || `${15 + index * 12} km away`,
+            : `${12 + index * 10} km away`,
           isCurrent: Boolean(f.isCurrent),
         };
       });
 
-      // Merge with preseeded to ensure full network coverage
-      const clinicMap = new Map<string, NearbyClinic>();
-      for (const c of [...apiClinics, ...PRE_SEEDED_CLINICS]) {
-        if (!clinicMap.has(c.id)) {
-          clinicMap.set(c.id, c);
-        }
-      }
-
-      const merged = Array.from(clinicMap.values());
-      cachedMemoryClinics = merged;
+      cachedMemoryClinics = apiClinics;
 
       await putRecord(STORES.METADATA, {
         key: 'nearby_clinics_cache',
-        items: merged,
+        items: apiClinics,
         updatedAt: new Date().toISOString(),
       });
 
-      notifyListeners(merged);
-      return merged;
+      notifyListeners(apiClinics);
+      return apiClinics;
     }
   } catch (err) {
-    console.warn('[DirectoryManager] Failed to fetch online clinics, using offline cache:', err);
+    console.warn('[DirectoryManager] Could not fetch clinics from API:', err);
   }
 
   return getNearbyClinics();

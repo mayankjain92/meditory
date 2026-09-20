@@ -48,6 +48,7 @@ export default function WorkstationShell({
   const [isTransfersOpen, setIsTransfersOpen] = useState(false);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [transferCounts, setTransferCounts] = useState({ pendingIncoming: 0, activeOutgoing: 0 });
+  const [networkCounts, setNetworkCounts] = useState<{ clinics: number; users: number }>({ clinics: 9, users: 15 });
 
   const refreshTransferCounts = async () => {
     try {
@@ -60,9 +61,27 @@ export default function WorkstationShell({
     }
   };
 
+  const refreshNetworkCounts = async () => {
+    try {
+      const res = await api.get<{ facilities?: any[]; doctors?: any[] }>('/api/clinic/doctors');
+      if (res) {
+        setNetworkCounts({
+          clinics: Array.isArray(res.facilities) && res.facilities.length > 0 ? res.facilities.length : 9,
+          users: Array.isArray(res.doctors) && res.doctors.length > 0 ? res.doctors.length : 15,
+        });
+      }
+    } catch {
+      // fallback
+    }
+  };
+
   useEffect(() => {
     refreshTransferCounts();
-    const interval = setInterval(refreshTransferCounts, 10000);
+    refreshNetworkCounts();
+    const interval = setInterval(() => {
+      refreshTransferCounts();
+      refreshNetworkCounts();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -145,11 +164,11 @@ export default function WorkstationShell({
           badge: 'Referrals',
         },
         {
-          label: 'Nearby Clinics Directory',
+          label: 'Registered Clinics & Users',
           path: '#directory',
           matchPath: '#directory',
-          icon: PhoneCall,
-          badge: 'Phones',
+          icon: Building2,
+          badge: `${networkCounts.clinics} Clinics`,
           badgeColor: 'bg-emerald-100 text-emerald-800',
           onClick: () => setIsDirectoryOpen(true),
         },
@@ -379,16 +398,18 @@ export default function WorkstationShell({
               ) : null}
             </button>
 
-            {/* Nearby Clinics Phone Directory Trigger */}
+            {/* Registered Clinics & Users Directory Trigger */}
             <button
               onClick={() => setIsDirectoryOpen(true)}
               type="button"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
-              title="Nearby Clinics Phone Directory (Direct calling)"
+              title="Registered Clinics & Users Directory"
             >
-              <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Nearby Clinics</span>
-              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-200/70 text-emerald-900 font-mono font-bold">Phones</span>
+              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Registered Clinics</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200/80 text-emerald-900 font-mono font-bold">
+                {networkCounts.clinics}
+              </span>
             </button>
 
             {/* Inter-Clinic Referral Quick Link */}
@@ -411,8 +432,18 @@ export default function WorkstationShell({
         {/* Inter-Clinic Transfer Requisitions Desk Modal */}
         <TransferRequisitionsDesk
           isOpen={isTransfersOpen}
-          onClose={() => setIsTransfersOpen(false)}
-          onUpdate={refreshTransferCounts}
+          onClose={() => {
+            setIsTransfersOpen(false);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('meditory:inventory-synced'));
+            }
+          }}
+          onUpdate={() => {
+            refreshTransferCounts();
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('meditory:inventory-synced'));
+            }
+          }}
         />
 
         {/* Offline Emergency Doctor & Clinic Phone Directory Modal */}

@@ -68,19 +68,58 @@ export async function locatorHandler(event: APIGatewayProxyEventV2) {
     })
   );
 
+  // 3. Fetch all facilities metadata for coordinates and contact
+  const allFacRes = await docClient.send(new ScanCommand({ TableName: TABLE_NAMES.FACILITIES }));
+  const facilityMap = new Map<string, Facility>();
+  (allFacRes.Items || []).forEach((f) => facilityMap.set(f.id, f as Facility));
+
   const inventoryEntries = (drugStockRes.Items || []) as InventoryItem[];
   if (inventoryEntries.length === 0) {
-    return notFound(`Medicine '${drugId}' has no registered stocks across facilities.`);
+    // Graceful fallback: When no positive shelf stock is reported for this drug in the database,
+    // return all neighboring approved network facilities (with 0 quantity) so clinicians can
+    // still contact neighboring facilities and submit inter-clinic transfer requisitions.
+    const emptyResults: StockLocatorFacilityResult[] = [];
+    for (const fac of Array.from(facilityMap.values())) {
+      if (fac.id === callerFacilityId || (fac as any).approvalStatus === 'REJECTED') continue;
+      let distanceKm = 0;
+      if (callerFacility?.latitude && callerFacility?.longitude && fac.latitude && fac.longitude) {
+        distanceKm = calculateDistanceKm(
+          callerFacility.latitude,
+          callerFacility.longitude,
+          fac.latitude,
+          fac.longitude
+        );
+      }
+      emptyResults.push({
+        facilityId: fac.id,
+        facilityName: fac.name,
+        facilityType: fac.type,
+        districtName: fac.districtName,
+        phone: fac.phone,
+        address: fac.address,
+        distanceKm,
+        quantity: 0,
+        unit: 'units',
+        status: STOCK_STATUS.OUT_OF_STOCK,
+        lastVerifiedAt: new Date().toISOString(),
+      });
+    }
+    emptyResults.sort((a, b) => a.distanceKm - b.distanceKm);
+
+    const emptyResponse: StockLocatorResponse = {
+      drugId,
+      drugName: drugId,
+      genericName: drugId,
+      isCritical: false,
+      localQuantity: 0,
+      results: emptyResults,
+    };
+    return successResponse(emptyResponse);
   }
 
   const referenceItem = inventoryEntries[0];
   const localItem = inventoryEntries.find((i) => i.facilityId === callerFacilityId);
   const localQuantity = localItem ? localItem.quantity : 0;
-
-  // 3. Fetch all facilities metadata for coordinates and contact
-  const allFacRes = await docClient.send(new ScanCommand({ TableName: TABLE_NAMES.FACILITIES }));
-  const facilityMap = new Map<string, Facility>();
-  (allFacRes.Items || []).forEach((f) => facilityMap.set(f.id, f as Facility));
 
   // 4. Build results for other clinics with stock
   const results: StockLocatorFacilityResult[] = [];

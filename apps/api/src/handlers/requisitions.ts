@@ -72,9 +72,9 @@ export async function createRequisitionHandler(event: APIGatewayProxyEventV2) {
   }
 
   // 2. Fetch drug metadata from donor shelf or catalog
-  let drugName = drugId;
-  let genericName: string | undefined;
-  let unit = 'units';
+  let drugName = (body as any).drugName || drugId;
+  let genericName: string | undefined = (body as any).genericName;
+  let unit = (body as any).unit || 'units';
 
   const donorInvRes = await docClient.send(
     new GetCommand({

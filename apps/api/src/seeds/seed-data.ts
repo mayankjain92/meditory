@@ -281,14 +281,17 @@ export async function runSeed(): Promise<void> {
   console.log(`[Seed] Seeding ${INVENTORY_MATRIX.length} Inventory Records into '${TABLE_NAMES.INVENTORY}'...`);
   const now = new Date().toISOString();
 
-  // Clear unseeded ephemeral inventory items
+  // Clear unseeded ephemeral inventory items ONLY for the 3 demo baseline facilities
   try {
     const existingInv = await docClient.send(new ScanCommand({ TableName: TABLE_NAMES.INVENTORY }));
     if (existingInv.Items) {
+      const demoFacilityIds = new Set(['PHC-ALIBAG-01', 'PHC-VADKHAL-02', 'CHC-PEN-03']);
       for (const item of existingInv.Items) {
-        const isMatrix = INVENTORY_MATRIX.some((m) => m.facilityId === item.facilityId && m.drugId === item.drugId);
-        if (!isMatrix) {
-          await docClient.send(new DeleteCommand({ TableName: TABLE_NAMES.INVENTORY, Key: { facilityId: item.facilityId, drugId: item.drugId } }));
+        if (demoFacilityIds.has(item.facilityId)) {
+          const isMatrix = INVENTORY_MATRIX.some((m) => m.facilityId === item.facilityId && m.drugId === item.drugId);
+          if (!isMatrix) {
+            await docClient.send(new DeleteCommand({ TableName: TABLE_NAMES.INVENTORY, Key: { facilityId: item.facilityId, drugId: item.drugId } }));
+          }
         }
       }
     }

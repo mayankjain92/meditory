@@ -17,6 +17,9 @@ import {
   Sparkles,
   RefreshCw,
   Phone,
+  Users,
+  MapPin,
+  Plus,
 } from 'lucide-react';
 import { api } from '@/lib/api-client';
 
@@ -47,7 +50,7 @@ interface TransferRequisitionsDeskProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdate?: () => void;
-  defaultTab?: 'incoming' | 'outgoing';
+  defaultTab?: 'incoming' | 'outgoing' | 'request' | 'network';
 }
 
 export default function TransferRequisitionsDesk({
@@ -56,11 +59,28 @@ export default function TransferRequisitionsDesk({
   onUpdate,
   defaultTab = 'incoming',
 }: TransferRequisitionsDeskProps) {
-  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing' | 'request' | 'network'>(defaultTab);
   const [incoming, setIncoming] = useState<RequisitionItem[]>([]);
   const [outgoing, setOutgoing] = useState<RequisitionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Network Clinics & Staff Directory State
+  const [registeredClinics, setRegisteredClinics] = useState<
+    Array<{ id: string; name: string; type: string; phone: string; address?: string; isCurrent?: boolean }>
+  >([]);
+  const [registeredDoctors, setRegisteredDoctors] = useState<
+    Array<{ id: string; name: string; role: string; facilityName: string; phone: string; email?: string }>
+  >([]);
+
+  // Requisition Composer State
+  const [composerFacilityId, setComposerFacilityId] = useState<string>('');
+  const [composerDrugId, setComposerDrugId] = useState<string>('DRUG-ASV-01');
+  const [composerDrugName, setComposerDrugName] = useState<string>('Anti-Snake Venom (ASV) Polyvalent');
+  const [composerQuantity, setComposerQuantity] = useState<number>(2);
+  const [composerUrgency, setComposerUrgency] = useState<'EMERGENCY' | 'ESSENTIAL' | 'ROUTINE'>('EMERGENCY');
+  const [composerNotes, setComposerNotes] = useState<string>('Emergency referral transfer');
+  const [isSubmittingRequisition, setIsSubmittingRequisition] = useState<boolean>(false);
 
   // Dispense Handshake Input state (donor entering PIN provided by transport)
   const [pinInputs, setPinInputs] = useState<Record<string, string>>({});
@@ -88,13 +108,79 @@ export default function TransferRequisitionsDesk({
     }
   }, []);
 
+  const fetchFacilitiesAndDoctors = useCallback(async () => {
+    try {
+      const res = await api.get<{
+        currentFacility: any;
+        facilities: any[];
+        doctors: any[];
+      }>('/api/clinic/doctors');
+      if (res) {
+        if (Array.isArray(res.facilities)) {
+          setRegisteredClinics(res.facilities);
+          const donorCandidate = res.facilities.find((f) => !f.isCurrent);
+          if (donorCandidate && !composerFacilityId) {
+            setComposerFacilityId(donorCandidate.id);
+          }
+        }
+        if (Array.isArray(res.doctors)) {
+          setRegisteredDoctors(res.doctors);
+        }
+      }
+    } catch (err) {
+      console.warn('[TransferDesk] Could not fetch facilities/doctors:', err);
+    }
+  }, [composerFacilityId]);
+
   useEffect(() => {
     if (isOpen) {
       fetchRequisitions();
+      fetchFacilitiesAndDoctors();
       const interval = setInterval(fetchRequisitions, 8000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, fetchRequisitions]);
+  }, [isOpen, fetchRequisitions, fetchFacilitiesAndDoctors]);
+
+  // Transmit new inter-clinic requisition
+  const handleSendRequisition = async () => {
+    if (!composerFacilityId) {
+      showToast('⚠️ Please select a destination donor clinic.');
+      return;
+    }
+    const cleanDrugId = composerDrugId.trim() || 'DRUG-ASV-01';
+    const cleanDrugName = composerDrugName.trim() || cleanDrugId;
+    if (composerQuantity <= 0) {
+      showToast('⚠️ Quantity must be at least 1.');
+      return;
+    }
+
+    try {
+      setIsSubmittingRequisition(true);
+      const targetClinic = registeredClinics.find((c) => c.id === composerFacilityId);
+      const res = await api.post<{ success: boolean; requisition: RequisitionItem }>('/api/requisitions/request', {
+        donorFacilityId: composerFacilityId,
+        drugId: cleanDrugId,
+        drugName: cleanDrugName,
+        quantity: composerQuantity,
+        urgency: composerUrgency,
+        patientNotes: composerNotes.trim() || 'Emergency transfer requisition',
+      });
+
+      showToast(`Requisition sent to ${res.requisition?.donorFacilityName || targetClinic?.name || 'clinic'}!`);
+      if (res.requisition) {
+        setOutgoing((prev) => [res.requisition, ...prev]);
+      } else {
+        await fetchRequisitions();
+      }
+      setActiveTab('outgoing');
+      if (onUpdate) onUpdate();
+      setComposerNotes('');
+    } catch (err: unknown) {
+      showToast((err as Error).message || 'Failed to send requisition.');
+    } finally {
+      setIsSubmittingRequisition(false);
+    }
+  };
 
   // Handle Approve / Reject
   const handleRespond = async (requisitionId: string, action: 'APPROVE' | 'REJECT') => {
@@ -148,6 +234,9 @@ export default function TransferRequisitionsDesk({
       showToast('Handshake PIN verified! Stock dispensed and marked In-Transit.');
       setPinInputs((prev) => ({ ...prev, [requisitionId]: '' }));
       await fetchRequisitions();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('meditory:inventory-synced'));
+      }
       if (onUpdate) onUpdate();
     } catch (err: unknown) {
       showToast((err as Error).message || 'PIN verification failed.');
@@ -167,6 +256,9 @@ export default function TransferRequisitionsDesk({
 
       showToast(`Medicine received! Shelf stock incremented (New total: ${res.newLocalQuantity}).`);
       await fetchRequisitions();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('meditory:inventory-synced'));
+      }
       if (onUpdate) onUpdate();
     } catch (err: unknown) {
       showToast((err as Error).message || 'Failed to confirm intake.');
@@ -205,6 +297,18 @@ export default function TransferRequisitionsDesk({
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setActiveTab('request')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
+                activeTab === 'request'
+                  ? 'bg-teal-400 text-slate-950 font-extrabold shadow-sm'
+                  : 'bg-teal-600 hover:bg-teal-500 text-white'
+              }`}
+              type="button"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Request Medicines</span>
+            </button>
+            <button
               onClick={fetchRequisitions}
               disabled={loading}
               title="Refresh Transfers"
@@ -222,16 +326,16 @@ export default function TransferRequisitionsDesk({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-4 pt-2 gap-2">
+        <div className="flex border-b border-slate-200 bg-slate-50 px-4 pt-2 gap-1.5 overflow-x-auto">
           <button
             onClick={() => setActiveTab('incoming')}
-            className={`pb-2.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-all ${
+            className={`pb-2.5 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-all whitespace-nowrap ${
               activeTab === 'incoming'
                 ? 'border-teal-700 text-teal-900'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>Incoming Requisitions (Donor)</span>
+            <span>Incoming (Donor)</span>
             {pendingIncomingCount > 0 && (
               <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-rose-600 text-white font-mono animate-pulse">
                 {pendingIncomingCount}
@@ -241,18 +345,42 @@ export default function TransferRequisitionsDesk({
 
           <button
             onClick={() => setActiveTab('outgoing')}
-            className={`pb-2.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-all ${
+            className={`pb-2.5 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-all whitespace-nowrap ${
               activeTab === 'outgoing'
                 ? 'border-teal-700 text-teal-900'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <span>Outgoing Requests (Sent)</span>
+            <span>Outgoing (Sent)</span>
             {activeOutgoingCount > 0 && (
               <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-teal-700 text-white font-mono">
                 {activeOutgoingCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('request')}
+            className={`pb-2.5 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-all whitespace-nowrap ${
+              activeTab === 'request'
+                ? 'border-teal-700 text-teal-900'
+                : 'border-transparent text-teal-700 hover:text-teal-900'
+            }`}
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Request Medicines</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('network')}
+            className={`pb-2.5 px-3.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-all whitespace-nowrap ${
+              activeTab === 'network'
+                ? 'border-teal-700 text-teal-900'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-teal-600" />
+            <span>Registered Network ({registeredClinics.length})</span>
           </button>
         </div>
 
@@ -410,7 +538,7 @@ export default function TransferRequisitionsDesk({
                 </div>
               ))
             )
-          ) : (
+          ) : activeTab === 'outgoing' ? (
             /* ================= OUTGOING (REQUESTER DESK) ================= */
             outgoing.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
@@ -539,6 +667,352 @@ export default function TransferRequisitionsDesk({
                 </div>
               ))
             )
+          ) : activeTab === 'request' ? (
+            /* ================= REQUEST MEDICINES COMPOSER ================= */
+            <div className="space-y-4">
+              <div className="p-3.5 bg-teal-50/90 rounded-xl border border-teal-200 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-teal-700 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-teal-950 uppercase tracking-wide">
+                    Dispatch Two-Way Handshake Requisition
+                  </h4>
+                  <p className="text-[11px] text-teal-800 mt-0.5">
+                    Send an authorized emergency medicine request to any neighboring registered primary clinic or community health centre in the district cluster.
+                  </p>
+                </div>
+              </div>
+
+              {/* Donor Facility Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Select Donor Clinic (Destination)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {registeredClinics.filter((c) => !c.isCurrent).length} neighboring clinics in network
+                  </span>
+                </label>
+                <select
+                  value={composerFacilityId}
+                  onChange={(e) => setComposerFacilityId(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl bg-white border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                >
+                  <option value="">-- Choose Donor Facility --</option>
+                  {registeredClinics
+                    .filter((c) => !c.isCurrent)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.type}) • {c.phone}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Target Medicine Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Pill className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Required Medicine</span>
+                </label>
+
+                {/* Quick Select Chips for Essential Life-Saving Drugs */}
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'DRUG-ASV-01', name: 'Anti-Snake Venom (ASV) Polyvalent' },
+                    { id: 'DRUG-ARV-02', name: 'Anti-Rabies Vaccine (ARV)' },
+                    { id: 'DRUG-ADR-03', name: 'Adrenaline 1:1000' },
+                    { id: 'DRUG-PCM-04', name: 'Paracetamol 500mg Tablets' },
+                    { id: 'DRUG-AMX-05', name: 'Amoxicillin 500mg Capsules' },
+                    { id: 'DRUG-ORS-06', name: 'Oral Rehydration Salts (ORS)' },
+                  ].map((drug) => (
+                    <button
+                      key={drug.id}
+                      type="button"
+                      onClick={() => {
+                        setComposerDrugId(drug.id);
+                        setComposerDrugName(drug.name);
+                      }}
+                      className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all ${
+                        composerDrugId === drug.id
+                          ? 'bg-teal-700 text-white border-teal-800 shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {drug.name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={composerDrugName}
+                    onChange={(e) => {
+                      setComposerDrugName(e.target.value);
+                      setComposerDrugId(
+                        'DRUG-' + e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 15)
+                      );
+                    }}
+                    placeholder="Or type medicine name (e.g. Insulin, Atropine)..."
+                    className="h-9 px-3 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={composerDrugId}
+                      onChange={(e) => setComposerDrugId(e.target.value)}
+                      placeholder="Drug Code (e.g. DRUG-ASV-01)"
+                      className="h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-600 w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Quantity & Urgency Stepper */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800">
+                    Required Quantity
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setComposerQuantity((q) => Math.max(1, q - 1))}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base flex items-center justify-center border border-slate-200"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={composerQuantity}
+                      onChange={(e) => setComposerQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="h-8 w-16 text-center rounded-lg bg-white border border-slate-300 font-bold font-mono text-xs text-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setComposerQuantity((q) => q + 1)}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base flex items-center justify-center border border-slate-200"
+                    >
+                      +
+                    </button>
+                    <div className="flex gap-1">
+                      {[2, 5, 10, 25].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setComposerQuantity(preset)}
+                          className={`px-1.5 py-1 text-[10px] font-bold rounded border ${
+                            composerQuantity === preset
+                              ? 'bg-teal-700 text-white border-teal-800'
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          +{preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Urgency Level */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800">
+                    Urgency Level
+                  </label>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { id: 'EMERGENCY', label: 'EMERGENCY', color: 'border-rose-400 bg-rose-50 text-rose-800' },
+                      { id: 'ESSENTIAL', label: 'ESSENTIAL', color: 'border-amber-400 bg-amber-50 text-amber-900' },
+                      { id: 'ROUTINE', label: 'ROUTINE', color: 'border-slate-300 bg-slate-50 text-slate-700' },
+                    ].map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => setComposerUrgency(u.id as any)}
+                        className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all ${
+                          composerUrgency === u.id
+                            ? `${u.color} ring-2 ring-teal-600/30 shadow-xs`
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {u.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Clinical Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800">
+                  Clinical Rationale / Emergency Referral Notes
+                </label>
+                <textarea
+                  value={composerNotes}
+                  onChange={(e) => setComposerNotes(e.target.value)}
+                  placeholder="E.g. Acute venomous bite triage at casualty. Patient admitted, immediate antivenom administration required..."
+                  rows={2}
+                  className="w-full p-2.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600/30 placeholder:text-slate-400"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('outgoing')}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendRequisition}
+                  disabled={isSubmittingRequisition || !composerFacilityId || !composerDrugId || composerQuantity <= 0}
+                  className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all active:scale-98"
+                >
+                  {isSubmittingRequisition ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Transmitting Requisition...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Transmit Two-Way Handshake Requisition</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ================= REGISTERED NETWORK CLINICS & USERS ================= */
+            <div className="space-y-4">
+              <div className="p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-200 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                    Connected Health Facilities &amp; Registered Staff
+                  </h4>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    {registeredClinics.length} Health Facilities • {registeredDoctors.length} Registered Healthcare Staff
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('request')}
+                  className="px-3 py-1.5 rounded-lg bg-teal-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:bg-teal-800"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>Request Medicine</span>
+                </button>
+              </div>
+
+              {/* Registered Clinics Grid */}
+              <div className="space-y-2">
+                <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Registered Health Facilities ({registeredClinics.length})
+                </h5>
+                <div className="grid grid-cols-1 gap-2">
+                  {registeredClinics.map((clinic) => (
+                    <div
+                      key={clinic.id}
+                      className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                        clinic.isCurrent
+                          ? 'bg-blue-50/60 border-blue-200'
+                          : 'bg-white border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-slate-900 truncate">
+                            {clinic.name}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {clinic.type}
+                          </span>
+                          {clinic.isCurrent && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                              Your Clinic
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 truncate flex items-center gap-2">
+                          <span>{clinic.address}</span>
+                          {clinic.phone && <span>• 📞 {clinic.phone}</span>}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {clinic.phone && (
+                          <a
+                            href={`tel:${clinic.phone.replace(/\s+/g, '')}`}
+                            className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200 flex items-center gap-1"
+                          >
+                            <Phone className="w-3 h-3 text-slate-400" />
+                            <span>Call</span>
+                          </a>
+                        )}
+                        {!clinic.isCurrent && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setComposerFacilityId(clinic.id);
+                              setActiveTab('request');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-bold border border-teal-200 flex items-center gap-1"
+                          >
+                            <Send className="w-3 h-3 text-teal-600" />
+                            <span>Request</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Registered Staff / Users List */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Registered Doctors &amp; Healthcare Staff ({registeredDoctors.length})
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {registeredDoctors.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-2.5 rounded-lg border border-slate-200 bg-white flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-bold text-xs text-slate-900 block truncate">
+                          {doc.name}
+                        </span>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {doc.facilityName} • {doc.role}
+                        </p>
+                        {doc.email && (
+                          <p className="text-[10px] font-mono text-slate-400 truncate">
+                            {doc.email}
+                          </p>
+                        )}
+                      </div>
+                      {doc.phone && (
+                        <a
+                          href={`tel:${doc.phone.replace(/\s+/g, '')}`}
+                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shrink-0"
+                          title={`Call ${doc.name}`}
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 

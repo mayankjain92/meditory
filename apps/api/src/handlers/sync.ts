@@ -114,11 +114,12 @@ export async function syncBatchHandler(event: APIGatewayProxyEventV2) {
         const threshold = 50;
         const newQuantity = qty;
         const newStatus = computeStockStatus(newQuantity, threshold);
-        const newItem: InventoryItem = {
+        const rawItem = item as any;
+        const newItem: any = {
           facilityId,
           drugId,
-          drugName: item.drugName || drugId,
-          genericName: item.drugName || drugId,
+          drugName: rawItem.drugName || drugId,
+          genericName: rawItem.drugName || drugId,
           category: 'General Medicines',
           form: 'Unit',
           quantity: newQuantity,
@@ -127,7 +128,7 @@ export async function syncBatchHandler(event: APIGatewayProxyEventV2) {
           tier: 'ESSENTIAL',
           isCritical: false,
           status: newStatus,
-          batchNumber: item.batchNumber,
+          batchNumber: rawItem.batchNumber,
           updatedAt: now,
           lastRestockedAt: now,
         };
@@ -140,7 +141,7 @@ export async function syncBatchHandler(event: APIGatewayProxyEventV2) {
           previousQuantity: 0,
           newQuantity,
           drugId,
-          drugName: item.drugName || drugId,
+          drugName: rawItem.drugName || drugId,
           workerId: session.userId,
           workerName: session.name,
           dispensedTo: item.dispensedTo || 'Offline Queue Restock Intake',

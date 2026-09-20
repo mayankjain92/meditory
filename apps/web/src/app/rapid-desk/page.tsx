@@ -192,62 +192,7 @@ function RapidDeskContent() {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; drugName: string } | null>(null);
 
   // Live Shift Transactions (Consolidating both Restocks & Dispenses)
-  const [shiftTransactions, setShiftTransactions] = useState<ShiftTransaction[]>([
-    {
-      id: 'TX-2026-091',
-      type: 'DISPENSE',
-      timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-      drugId: 'DRUG-PCM-04',
-      drugName: 'Paracetamol Tablets',
-      quantity: 10,
-      unit: 'Tablet',
-      batchNumber: 'LOT-2026-44',
-      counterparty: 'Sunita Jadhav (OPD Case #4891)',
-      notes: 'OPD-2026-4891',
-      workerName: 'Dr. Rahul Sharma',
-    },
-    {
-      id: 'TX-2026-090',
-      type: 'DISPENSE',
-      timestamp: new Date(Date.now() - 32 * 60 * 1000).toISOString(),
-      drugId: 'DRUG-ARV-02',
-      drugName: 'Anti-Rabies Vaccine',
-      quantity: 1,
-      unit: 'Vial',
-      batchNumber: 'LOT-2026-19',
-      counterparty: 'Ramesh Patil (Casualty Bite Protocol)',
-      notes: 'Post-Exposure Prophylaxis',
-      workerName: 'Dr. Rahul Sharma',
-    },
-    {
-      id: 'TX-2026-089',
-      type: 'RESTOCK',
-      timestamp: new Date(Date.now() - 55 * 60 * 1000).toISOString(),
-      drugId: 'DRUG-PCM-04',
-      drugName: 'Paracetamol Tablets',
-      quantity: 200,
-      unit: 'Tablet',
-      batchNumber: 'LOT-2026-44',
-      expiryDate: '2028-06',
-      counterparty: 'District Depot (DEPOT-RAIGAD-CH-4819)',
-      notes: 'DEPOT-RAIGAD-CH-4819',
-      workerName: 'Dr. Rahul Sharma',
-    },
-    {
-      id: 'TX-2026-088',
-      type: 'RESTOCK',
-      timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-      drugId: 'DRUG-ORS-03',
-      drugName: 'Oral Rehydration Salts',
-      quantity: 50,
-      unit: 'Packet',
-      batchNumber: 'LOT-2026-12',
-      expiryDate: '2027-11',
-      counterparty: 'District Depot (DEPOT-RAIGAD-CH-4815)',
-      notes: 'DEPOT-RAIGAD-CH-4815',
-      workerName: 'Dr. Rahul Sharma',
-    },
-  ]);
+  const [shiftTransactions, setShiftTransactions] = useState<ShiftTransaction[]>([]);
 
   // Sync view from URL param when navigation occurs
   useEffect(() => {
@@ -307,6 +252,9 @@ function RapidDeskContent() {
               : 'Pharmacy Shelf Unit 3'
           );
           setIntakeChallan(`DEPOT-CH-${Math.floor(1000 + Math.random() * 9000)}`);
+        } else if (data.items.length === 0) {
+          setMedicineQuery('');
+          setSelectedDrugId('');
         }
       }
     } catch (e: any) {
@@ -365,12 +313,30 @@ function RapidDeskContent() {
         fetchInventory();
       }
     };
+
+    const handleFocus = () => {
+      if (!isOfflineMode()) {
+        fetchInventory();
+      }
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('meditory:inventory-synced', handleSynced);
+      window.addEventListener('focus', handleFocus);
     }
+
+    // Auto-poll every 8 seconds so inter-clinic transfers from other facilities update automatically
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && !document.hidden && !isOfflineMode()) {
+        fetchInventory();
+      }
+    }, 8000);
+
     return () => {
+      clearInterval(pollInterval);
       if (typeof window !== 'undefined') {
         window.removeEventListener('meditory:inventory-synced', handleSynced);
+        window.removeEventListener('focus', handleFocus);
       }
     };
   }, []);
@@ -4031,7 +3997,31 @@ function RapidDeskContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredLedgerItems.map((item) => {
+                  {filteredLedgerItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 px-4 text-center">
+                        <div className="max-w-sm mx-auto flex flex-col items-center">
+                          <PackagePlus className="w-10 h-10 text-slate-300 mb-2" />
+                          <p className="text-xs font-bold text-slate-700">No medicines in shelf inventory</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {searchQuery
+                              ? `No medicines match "${searchQuery}". Try a different search term.`
+                              : 'Your clinic inventory is currently empty. Click below to add your first medicine batch.'}
+                          </p>
+                          {!searchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => switchView('stock-entry')}
+                              className="mt-3 px-3.5 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-xs transition-colors"
+                            >
+                              + Add Medicine / Restock
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLedgerItems.map((item) => {
                     const qtyNum = Number(item.quantity) || 0;
                     const isOut = qtyNum <= 0 || item.status === 'OUT_OF_STOCK';
                     const isLow = !isOut && (item.status === 'LOW_STOCK' || qtyNum <= Number(item.threshold || 10));
@@ -4194,7 +4184,7 @@ function RapidDeskContent() {
                         )}
                       </React.Fragment>
                     );
-                  })}
+                  }))}
                 </tbody>
               </table>
             </div>

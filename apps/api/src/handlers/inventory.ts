@@ -14,6 +14,7 @@ export async function inventoryHandler(event: APIGatewayProxyEventV2) {
   if (!session) {
     return unauthorized();
   }
+  const facilityId = session.facilityId;
 
   // Clinic-to-Clinic boundary check:
   // If request specifies a facilityId query param, it MUST match the worker's assigned facilityId
@@ -25,8 +26,6 @@ export async function inventoryHandler(event: APIGatewayProxyEventV2) {
       return forbidden(`Access denied. You cannot view the inventory of ${queryFacilityId}.`);
     }
   }
-
-  const facilityId = session.facilityId;
 
   // 1. Fetch Facility Metadata
   const facilityRes = await docClient.send(

@@ -48,7 +48,7 @@ export async function loginHandler(event: APIGatewayProxyEventV2) {
   }
 
   if (worker.status !== 'ACTIVE') {
-    return unauthorized('Account is suspended. Please contact district administrator.');
+    return unauthorized('Clinic worker account is inactive or pending district authority approval.');
   }
 
   // 3. Fetch clinic metadata
@@ -59,9 +59,20 @@ export async function loginHandler(event: APIGatewayProxyEventV2) {
     })
   );
 
-  const facility = facilityRes.Item as Facility | undefined;
+  const facility = facilityRes.Item as
+    | (Facility & { isApproved?: boolean; approvalStatus?: string })
+    | undefined;
   if (!facility) {
     return notFound('Assigned clinic facility not found in registry.');
+  }
+
+  if (facility.isApproved === false || facility.approvalStatus === 'PENDING') {
+    return unauthorized(
+      'Clinic registration is pending District Health Authority approval. Please contact state administration.'
+    );
+  }
+  if (facility.approvalStatus === 'REJECTED') {
+    return unauthorized('Clinic registration was rejected by District Health Authority.');
   }
 
   // 4. Generate signed JWT

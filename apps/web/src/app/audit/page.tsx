@@ -31,6 +31,9 @@ interface AuditItem {
   batchNumber?: string;
   workerId: string;
   workerName: string;
+  dispensedTo?: string;
+  patientName?: string;
+  notes?: string;
   sha256Hash?: string;
 }
 
@@ -77,7 +80,49 @@ export default function AuditLogPage() {
   };
 
   const handleExport = (format: string) => {
-    showToast(`📄 Audit Trail exported successfully in ${format} format.`);
+    if (format === 'CSV') {
+      const headers = [
+        'Timestamp',
+        'Action',
+        'Medicine',
+        'Lot Number',
+        'Dispensed To / Recipient',
+        'Clinical Notes / OPD Ref',
+        'Delta',
+        'Previous Stock',
+        'New Stock',
+        'Authorized Staff',
+        'Staff ID',
+      ];
+      const rows = filteredLogs.map((log) => [
+        log.timestamp,
+        log.action,
+        `"${log.drugName}"`,
+        `"${log.batchNumber || 'N/A'}"`,
+        `"${log.dispensedTo || log.patientName || (log.action === 'DISPENSE' ? 'Requesting Health Clinic' : 'District Medical Depot')}"`,
+        `"${log.notes || ''}"`,
+        log.delta,
+        log.previousQuantity,
+        log.newQuantity,
+        `"${log.workerName}"`,
+        `"${log.workerId}"`,
+      ]);
+      const csvContent =
+        'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute(
+        'download',
+        `meditory_audit_ledger_${new Date().toISOString().slice(0, 10)}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('📄 Audit Trail CSV downloaded with Recipient & Patient tracking.');
+    } else {
+      showToast(`📄 Audit Trail exported in ${format} format.`);
+    }
   };
 
   const toggleLogExpansion = (id: string) => {
@@ -90,6 +135,9 @@ export default function AuditLogPage() {
     if (!query) return true;
     return (
       (log.drugName || '').toLowerCase().includes(query) ||
+      (log.dispensedTo || '').toLowerCase().includes(query) ||
+      (log.patientName || '').toLowerCase().includes(query) ||
+      (log.notes || '').toLowerCase().includes(query) ||
       (log.id || '').toLowerCase().includes(query) ||
       (log.workerName || '').toLowerCase().includes(query) ||
       (log.batchNumber || '').toLowerCase().includes(query) ||
@@ -249,12 +297,13 @@ export default function AuditLogPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase tracking-wider text-[11px]">
                 <tr>
-                  <th className="py-3 px-4 w-[18%]">Timestamp</th>
-                  <th className="py-3 px-4 w-[14%]">Action</th>
-                  <th className="py-3 px-4 w-[26%]">Medicine</th>
-                  <th className="py-3 px-4 w-[12%]">Delta</th>
-                  <th className="py-3 px-4 w-[14%]">Stock Shift</th>
-                  <th className="py-3 px-4 w-[16%] text-right">Authorized Staff</th>
+                  <th className="py-3 px-3.5 w-[14%]">Timestamp</th>
+                  <th className="py-3 px-3 w-[11%]">Action</th>
+                  <th className="py-3 px-3.5 w-[22%]">Medicine</th>
+                  <th className="py-3 px-3.5 w-[21%]">Dispensed To / Recipient</th>
+                  <th className="py-3 px-3 w-[9%]">Delta</th>
+                  <th className="py-3 px-3 w-[10%]">Stock Shift</th>
+                  <th className="py-3 px-3.5 w-[13%] text-right">Authorized Staff</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -262,6 +311,10 @@ export default function AuditLogPage() {
                   const isDispense = log.action === 'DISPENSE';
                   const logKey = log.id || `${log.facilityId}-${log.timestamp}`;
                   const isExpanded = expandedLogId === logKey;
+                  const recipientDisplay =
+                    log.dispensedTo ||
+                    log.patientName ||
+                    (isDispense ? 'Requesting Health Clinic' : 'District Medical Depot');
 
                   return (
                     <React.Fragment key={logKey}>
@@ -272,8 +325,8 @@ export default function AuditLogPage() {
                         }`}
                       >
                         {/* Timestamp with expand chevron */}
-                        <td className="py-3.5 px-4 font-mono text-slate-500">
-                          <div className="flex items-center gap-2">
+                        <td className="py-3.5 px-3.5 font-mono text-slate-500">
+                          <div className="flex items-center gap-1.5">
                             <span className="text-slate-400">
                               {isExpanded ? (
                                 <ChevronDown className="w-3.5 h-3.5 text-teal-700" />
@@ -292,9 +345,9 @@ export default function AuditLogPage() {
                         </td>
 
                         {/* Action Badge */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-3.5 px-3">
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                               isDispense
                                 ? 'bg-amber-50 text-amber-800 border-amber-200'
                                 : 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -310,32 +363,65 @@ export default function AuditLogPage() {
                         </td>
 
                         {/* Medicine Name */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-3.5 px-3.5">
                           <div className="flex flex-col">
-                            <span className="font-bold text-slate-900 text-sm">{log.drugName}</span>
-                            <span className="text-[11px] text-slate-400 font-mono">
+                            <span className="font-bold text-slate-900 text-xs">{log.drugName}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
                               Lot: {log.batchNumber || 'STANDARD-IPHS'}
                             </span>
                           </div>
                         </td>
 
+                        {/* Dispensed To / Recipient Column */}
+                        <td className="py-3.5 px-3.5">
+                          {isDispense ? (
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center text-[10px] shrink-0 font-bold border border-teal-200/60">
+                                  👤
+                                </span>
+                                <span className="font-bold text-slate-900 text-xs truncate max-w-[170px]" title={recipientDisplay}>
+                                  {recipientDisplay}
+                                </span>
+                              </div>
+                              {log.notes && (
+                                <span className="text-[10px] text-slate-500 font-mono pl-6 truncate max-w-[180px]" title={log.notes}>
+                                  {log.notes}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-[10px] shrink-0 font-bold border border-blue-200/60">
+                                🏢
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-slate-800 text-xs truncate max-w-[170px]" title={recipientDisplay}>
+                                  {recipientDisplay}
+                                </span>
+                                <span className="text-[10px] text-slate-400">Depot Replenishment</span>
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
                         {/* Delta */}
-                        <td className="py-3.5 px-4 font-mono font-bold">
+                        <td className="py-3.5 px-3 font-mono font-bold">
                           <span className={isDispense ? 'text-amber-800' : 'text-emerald-700'}>
                             {log.delta > 0 ? `+${log.delta}` : log.delta}
                           </span>
                         </td>
 
                         {/* Stock Shift (Before -> After) */}
-                        <td className="py-3.5 px-4 font-mono text-slate-600">
+                        <td className="py-3.5 px-3 font-mono text-slate-600">
                           <span>{log.previousQuantity}</span> →{' '}
                           <strong className="text-slate-900">{log.newQuantity}</strong>
                         </td>
 
                         {/* Authorized Staff */}
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-3.5 px-3.5 text-right">
                           <div className="flex flex-col items-end">
-                            <span className="font-semibold text-slate-900">{log.workerName}</span>
+                            <span className="font-semibold text-slate-900 text-xs">{log.workerName}</span>
                             <span className="text-[10px] text-slate-400 font-mono">{log.workerId}</span>
                           </div>
                         </td>
@@ -344,27 +430,43 @@ export default function AuditLogPage() {
                       {/* Forensic Detail Drawer (Progressive Disclosure) */}
                       {isExpanded && (
                         <tr className="bg-slate-50/90 border-y border-slate-200/80">
-                          <td colSpan={6} className="py-3 px-6 text-xs text-slate-600">
-                            <div className="flex flex-wrap items-center justify-between gap-4 font-mono text-[11px]">
-                              <div>
-                                <span className="text-slate-400 font-sans">Transaction ID:</span>{' '}
-                                <strong className="text-slate-800">
-                                  {log.id || `TXN-${log.timestamp.slice(11, 19).replace(/:/g, '')}`}
-                                </strong>
+                          <td colSpan={7} className="py-3 px-6 text-xs text-slate-600">
+                            <div className="space-y-2 font-mono text-[11px]">
+                              <div className="flex flex-wrap items-center justify-between gap-4">
+                                <div>
+                                  <span className="text-slate-400 font-sans">Dispensed To / Counterparty:</span>{' '}
+                                  <strong className="text-slate-900 font-sans">
+                                    {recipientDisplay}
+                                  </strong>
+                                </div>
+                                {log.notes && (
+                                  <div>
+                                    <span className="text-slate-400 font-sans">Clinical / OPD Ref:</span>{' '}
+                                    <span className="text-slate-700 font-mono font-semibold">{log.notes}</span>
+                                  </div>
+                                )}
+                                <div className="text-emerald-700 font-sans font-semibold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Cryptographically Verified Block</span>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-slate-400 font-sans">Facility Node:</span>{' '}
-                                <strong className="text-slate-800">{log.facilityId}</strong>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 font-sans">SHA-256 Digest:</span>{' '}
-                                <span className="text-slate-600 bg-slate-200/70 px-2 py-0.5 rounded text-[10px]">
-                                  {log.sha256Hash || `sha256:${log.timestamp.slice(0, 10)}-${log.drugId}-verified`}
-                                </span>
-                              </div>
-                              <div className="text-emerald-700 font-sans font-semibold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Verified Ledger Block</span>
+                              <div className="flex flex-wrap items-center justify-between gap-4 pt-1 border-t border-slate-200/60 text-[10px] text-slate-400">
+                                <div>
+                                  <span className="font-sans">Transaction ID:</span>{' '}
+                                  <strong className="text-slate-700">
+                                    {log.id || `TXN-${log.timestamp.slice(11, 19).replace(/:/g, '')}`}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span className="font-sans">Facility Node:</span>{' '}
+                                  <strong className="text-slate-700">{log.facilityId}</strong>
+                                </div>
+                                <div>
+                                  <span className="font-sans">SHA-256 Digest:</span>{' '}
+                                  <span className="text-slate-600 bg-slate-200/70 px-2 py-0.5 rounded">
+                                    {log.sha256Hash || `sha256:${log.timestamp.slice(0, 10)}-${log.drugId}-verified`}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </td>

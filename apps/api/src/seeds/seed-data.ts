@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   TABLE_NAMES,
   STOCK_STATUS,
@@ -74,10 +74,60 @@ export const SEED_WORKERS = [
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
+    id: 'USR-ALIBAG-02',
+    facilityId: 'PHC-ALIBAG-01',
+    name: 'Dr. Anjali Deshmukh',
+    email: 'anjali.deshmukh@phc-alibag.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-ALIBAG-03',
+    facilityId: 'PHC-ALIBAG-01',
+    name: 'Dr. Suresh Gaikwad',
+    email: 'suresh.gaikwad@phc-alibag.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-ALIBAG-04',
+    facilityId: 'PHC-ALIBAG-01',
+    name: 'Dr. Sneha Patil',
+    email: 'sneha.patil@phc-alibag.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-ALIBAG-05',
+    facilityId: 'PHC-ALIBAG-01',
+    name: 'Dr. Vikram Shinde',
+    email: 'vikram.shinde@phc-alibag.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
     id: 'USR-VADKHAL-02',
     facilityId: 'PHC-VADKHAL-02',
-    name: 'Priya Deshmukh',
+    name: 'Dr. Priya Deshmukh',
     email: 'priya.deshmukh@phc-vadkhal.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-VADKHAL-03',
+    facilityId: 'PHC-VADKHAL-02',
+    name: 'Dr. Rohan Mhatre',
+    email: 'rohan.mhatre@phc-vadkhal.in',
     role: 'facility_worker' as const,
     status: 'ACTIVE' as const,
     passwordHash: hashedPassword,
@@ -86,8 +136,18 @@ export const SEED_WORKERS = [
   {
     id: 'USR-PEN-03',
     facilityId: 'CHC-PEN-03',
-    name: 'Amit Patil',
+    name: 'Dr. Amit Patil',
     email: 'amit.patil@chc-pen.in',
+    role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-PEN-04',
+    facilityId: 'CHC-PEN-03',
+    name: 'Dr. Kavita Joshi',
+    email: 'kavita.joshi@chc-pen.in',
     role: 'facility_worker' as const,
     status: 'ACTIVE' as const,
     passwordHash: hashedPassword,
@@ -221,6 +281,19 @@ export async function runSeed(): Promise<void> {
   console.log(`[Seed] Seeding ${INVENTORY_MATRIX.length} Inventory Records into '${TABLE_NAMES.INVENTORY}'...`);
   const now = new Date().toISOString();
 
+  // Clear unseeded ephemeral inventory items
+  try {
+    const existingInv = await docClient.send(new ScanCommand({ TableName: TABLE_NAMES.INVENTORY }));
+    if (existingInv.Items) {
+      for (const item of existingInv.Items) {
+        const isMatrix = INVENTORY_MATRIX.some((m) => m.facilityId === item.facilityId && m.drugId === item.drugId);
+        if (!isMatrix) {
+          await docClient.send(new DeleteCommand({ TableName: TABLE_NAMES.INVENTORY, Key: { facilityId: item.facilityId, drugId: item.drugId } }));
+        }
+      }
+    }
+  } catch {}
+
   for (const inv of INVENTORY_MATRIX) {
     const drugMeta = SEED_DRUGS.find((d) => d.id === inv.drugId)!;
     const status = calculateStatus(inv.quantity, inv.threshold);
@@ -256,9 +329,51 @@ export async function runSeed(): Promise<void> {
       drugName: drugMeta.commonNames[0],
       workerId: 'SYSTEM_INIT',
       workerName: 'District Supply Onboarding',
+      dispensedTo: 'Raigad District Medical Depot (Initial Allocation)',
+      batchNumber: 'LOT-2026-01',
     };
 
     await docClient.send(new PutCommand({ TableName: TABLE_NAMES.AUDIT_LOGS, Item: auditItem }));
+  }
+
+  // Pre-seed a few realistic patient dispenses for Alibag PHC audit trail
+  const sampleDispenses = [
+    {
+      facilityId: 'PHC-ALIBAG-01',
+      timestamp: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
+      action: AUDIT_ACTION.DISPENSE,
+      delta: -10,
+      previousQuantity: 500,
+      newQuantity: 490,
+      drugId: 'DRUG-PCM-04',
+      drugName: 'Paracetamol',
+      workerId: 'USR-ALIBAG-01',
+      workerName: 'Dr. Rahul Sharma',
+      dispensedTo: 'Sunita Jadhav (OPD-2026-4891)',
+      patientName: 'Sunita Jadhav',
+      notes: 'OPD-2026-4891: High Fever & Body Ache',
+      batchNumber: 'LOT-2026-44',
+    },
+    {
+      facilityId: 'PHC-ALIBAG-01',
+      timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+      action: AUDIT_ACTION.DISPENSE,
+      delta: -1,
+      previousQuantity: 14,
+      newQuantity: 13,
+      drugId: 'DRUG-ARV-02',
+      drugName: 'Anti-Rabies Vaccine',
+      workerId: 'USR-ALIBAG-01',
+      workerName: 'Dr. Rahul Sharma',
+      dispensedTo: 'Ramesh Patil (Casualty Bite Protocol)',
+      patientName: 'Ramesh Patil',
+      notes: 'Post-Exposure Prophylaxis (Stray Dog Bite, Grade III)',
+      batchNumber: 'LOT-2026-19',
+    },
+  ];
+
+  for (const dispense of sampleDispenses) {
+    await docClient.send(new PutCommand({ TableName: TABLE_NAMES.AUDIT_LOGS, Item: dispense }));
   }
 
   console.log(`\n✅ [Seed] Successfully seeded all data across separate domain tables!`);

@@ -6,13 +6,11 @@ import { useRouter } from 'next/navigation';
 import WorkstationShell from '@/components/WorkstationShell';
 import {
   AlertTriangle,
-  MinusCircle,
   Network,
   CheckCircle2,
   PackagePlus,
-  Pill,
   ArrowLeft,
-  ShieldCheck,
+  Zap,
 } from 'lucide-react';
 import { api } from '@/lib/api-client';
 
@@ -41,23 +39,6 @@ function EmergencyTriageContent() {
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Custom Dispense Modal State
-  const [showDispenseModal, setShowDispenseModal] = useState(false);
-  const [dispenseTargetDrug, setDispenseTargetDrug] = useState<DrugItem | null>(null);
-  const [dispenseQty, setDispenseQty] = useState(1);
-  const [dispenseNotes, setDispenseNotes] = useState('');
-  const [isSubmittingDispense, setIsSubmittingDispense] = useState(false);
-
-  // Custom Restock / Inward Stock Modal State
-  const [showRestockModal, setShowRestockModal] = useState(false);
-  const [restockDrugId, setRestockDrugId] = useState('');
-  const [restockQty, setRestockQty] = useState(50);
-  const [restockBatch, setRestockBatch] = useState('');
-  const [restockExpiry, setRestockExpiry] = useState('');
-  const [restockStorage, setRestockStorage] = useState('');
-  const [restockChallan, setRestockChallan] = useState('');
-  const [isSubmittingRestock, setIsSubmittingRestock] = useState(false);
-
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
@@ -81,140 +62,11 @@ function EmergencyTriageContent() {
     fetchInventory();
   }, []);
 
-  // Quick Dispense 1 unit
-  const handleQuickDispense = async (drugId: string) => {
-    await executeDispense(drugId, 1);
-  };
-
-  // Open Dispense Modal
-  const openDispenseModal = (item: DrugItem) => {
-    setDispenseTargetDrug(item);
-    const defaultQty = item.form.toLowerCase().includes('tablet') || item.form.toLowerCase().includes('capsule') ? 10 : 1;
-    setDispenseQty(Math.min(defaultQty, Math.max(1, item.quantity)));
-    setDispenseNotes(`EMERGENCY-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
-    setShowDispenseModal(true);
-  };
-
-  // Execute Dispense API Call
-  const executeDispense = async (drugId: string, quantity: number, notes?: string) => {
-    const targetItem = items.find((i) => i.drugId === drugId);
-    if (!targetItem || targetItem.quantity <= 0) {
-      showToast(`⚠️ Cannot dispense: ${targetItem?.drugName || 'Item'} is currently out of stock!`);
-      return;
-    }
-
-    if (quantity > targetItem.quantity) {
-      showToast(`⚠️ Cannot dispense ${quantity} units: Only ${targetItem.quantity} ${targetItem.unit} remaining on shelf.`);
-      return;
-    }
-
-    try {
-      const result = await api.post('/api/clinic/dispense', { drugId, quantity, notes });
-
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.drugId === drugId) {
-            return {
-              ...item,
-              quantity: result.newQuantity,
-              status: result.status,
-            };
-          }
-          return item;
-        })
-      );
-
-      showToast(`✅ Dispensed ${quantity} ${targetItem.unit} of ${targetItem.drugName}.`);
-      if (result.alarmTriggered) {
-        showToast(`🚨 Critical Buffer Alert: ${result.drugName} dropped below safety buffer (${result.newQuantity} left)!`);
-      }
-      return true;
-    } catch (err: any) {
-      console.error('Dispense error:', err);
-      showToast(`❌ Dispense failed: ${err.message}`);
-      fetchInventory();
-      return false;
-    }
-  };
-
-  const handleCustomDispenseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dispenseTargetDrug || dispenseQty <= 0) return;
-
-    setIsSubmittingDispense(true);
-    const success = await executeDispense(dispenseTargetDrug.drugId, dispenseQty, dispenseNotes);
-    setIsSubmittingDispense(false);
-    if (success) {
-      setShowDispenseModal(false);
-    }
-  };
-
-  // Open Restock Modal
-  const openRestockModal = (drugId?: string) => {
-    const targetId = drugId || emergencyItems[0]?.drugId || items[0]?.drugId || '';
-    const targetItem = items.find((i) => i.drugId === targetId);
-    setRestockDrugId(targetId);
-    setRestockQty(50);
-    setRestockBatch(targetItem?.batchNumber || `LOT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
-    setRestockExpiry(targetItem?.expiryDate || `${new Date().getFullYear() + 2}-12`);
-    setRestockStorage(targetItem?.storageLocation || (targetItem?.tier === 'EMERGENCY' ? 'Cold-Chain ILR 2 (3.4°C)' : 'Pharmacy Shelf Unit 3'));
-    setRestockChallan(`DEPOT-CH-${Math.floor(1000 + Math.random() * 9000)}`);
-    setShowRestockModal(true);
-  };
-
-  // Execute Restock API Call
-  const handleRestockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!restockDrugId || restockQty <= 0) {
-      showToast('⚠️ Please select an emergency medicine and positive restock quantity.');
-      return;
-    }
-
-    setIsSubmittingRestock(true);
-    const targetItem = items.find((i) => i.drugId === restockDrugId);
-
-    try {
-      const result = await api.post('/api/clinic/restock', {
-        drugId: restockDrugId,
-        quantity: restockQty,
-        batchNumber: restockBatch,
-        expiryDate: restockExpiry,
-        storageLocation: restockStorage,
-      });
-
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.drugId === restockDrugId) {
-            return {
-              ...item,
-              quantity: result.newQuantity,
-              status: result.status,
-            };
-          }
-          return item;
-        })
-      );
-
-      showToast(`📦 Restocked +${restockQty} ${targetItem?.unit || 'units'} of ${result.drugName}.`);
-      setShowRestockModal(false);
-    } catch (err: any) {
-      console.error('Restock error:', err);
-      showToast(`❌ Restock failed: ${err.message}`);
-    } finally {
-      setIsSubmittingRestock(false);
-    }
-  };
-
-  // EMERGENCY TRIAGE FILTERING RULES:
-  // 1. All emergency formulary items
+  // Filter categorized items
   const emergencyItems = items.filter((i) => i.tier === 'EMERGENCY');
-
-  // 2. Urgent items: ONLY LOW_STOCK or OUT_OF_STOCK items receive high-emphasis triage cards
   const urgentEmergencyItems = emergencyItems.filter(
     (i) => i.status === 'LOW_STOCK' || i.status === 'OUT_OF_STOCK'
   );
-
-  // 3. Nominal items: Adequate stock, displayed with clean reassurance styling
   const nominalEmergencyItems = emergencyItems.filter((i) => i.status === 'IN_STOCK');
 
   return (
@@ -228,389 +80,15 @@ function EmergencyTriageContent() {
       )}
 
       {/* ===================================================================== */}
-      {/* 1. CUSTOM DISPENSE MODAL                                              */}
-      {/* ===================================================================== */}
-      {showDispenseModal && dispenseTargetDrug && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center">
-                  <Pill className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Emergency Dispense</h3>
-                  <p className="text-[11px] text-slate-300">
-                    High-priority clinical administration record
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowDispenseModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCustomDispenseSubmit} className="p-5 space-y-4 text-xs text-slate-700">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wide">
-                    Emergency Priority
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    {dispenseTargetDrug.drugId}
-                  </span>
-                </div>
-                <h4 className="font-bold text-slate-900 text-sm">{dispenseTargetDrug.drugName}</h4>
-                <p className="text-[11px] text-slate-500">{dispenseTargetDrug.genericName} • {dispenseTargetDrug.form}</p>
-                <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-200/60 mt-1">
-                  <span className="text-slate-600 font-medium">Available Shelf Stock:</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">
-                    {dispenseTargetDrug.quantity} {dispenseTargetDrug.unit}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Dispense Quantity ({dispenseTargetDrug.unit})
-                  </label>
-                  <span className="text-[11px] text-slate-500">
-                    Max: {dispenseTargetDrug.quantity}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max={dispenseTargetDrug.quantity}
-                    required
-                    value={dispenseQty}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setDispenseQty(isNaN(val) ? 0 : val);
-                    }}
-                    className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-base font-mono font-bold text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                    placeholder="Enter quantity"
-                    autoFocus
-                  />
-                  <span className="text-xs font-semibold text-slate-500 shrink-0 uppercase px-2 py-2.5 bg-slate-100 rounded-lg border border-slate-200">
-                    {dispenseTargetDrug.unit}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[11px] text-slate-500 font-medium mr-1">Quick Presets:</span>
-                  {[1, 2, 5, 10].map((preset) => {
-                    if (preset > dispenseTargetDrug.quantity && dispenseTargetDrug.quantity > 0) return null;
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setDispenseQty(preset)}
-                        className={`px-2.5 py-1 rounded text-xs font-mono font-semibold border transition-all ${
-                          dispenseQty === preset
-                            ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {preset}
-                      </button>
-                    );
-                  })}
-                  {dispenseTargetDrug.quantity > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setDispenseQty(dispenseTargetDrug.quantity)}
-                      className="px-2 py-1 rounded text-xs font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    >
-                      All ({dispenseTargetDrug.quantity})
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div
-                className={`p-3 rounded-lg border text-xs flex items-center justify-between transition-colors ${
-                  dispenseQty > dispenseTargetDrug.quantity
-                    ? 'bg-rose-50 border-rose-200 text-rose-800'
-                    : dispenseQty <= 0
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                }`}
-              >
-                <div>
-                  <span className="font-semibold block">
-                    {dispenseQty > dispenseTargetDrug.quantity
-                      ? '⚠️ Over-dispense Warning'
-                      : 'Stock Balance After Dispense:'}
-                  </span>
-                  <span className="text-[11px]">
-                    {dispenseQty > dispenseTargetDrug.quantity
-                      ? `Requested ${dispenseQty} exceeds available shelf stock (${dispenseTargetDrug.quantity} ${dispenseTargetDrug.unit}).`
-                      : `${dispenseTargetDrug.quantity} - ${dispenseQty} = ${Math.max(0, dispenseTargetDrug.quantity - dispenseQty)} ${dispenseTargetDrug.unit} remaining.`}
-                  </span>
-                </div>
-                <span className="font-mono font-bold text-sm shrink-0">
-                  {Math.max(0, dispenseTargetDrug.quantity - dispenseQty)} {dispenseTargetDrug.unit}
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-semibold text-xs text-slate-900">
-                  Emergency Triage Incident / Case ID
-                </label>
-                <input
-                  type="text"
-                  value={dispenseNotes}
-                  onChange={(e) => setDispenseNotes(e.target.value)}
-                  placeholder="e.g. TRAUMA-2026-091 or BITE-CASE-12"
-                  className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDispenseModal(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingDispense || dispenseQty <= 0 || dispenseQty > dispenseTargetDrug.quantity}
-                  className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  <MinusCircle className="w-4 h-4" />
-                  <span>
-                    {isSubmittingDispense
-                      ? 'Dispensing...'
-                      : `Confirm Dispense (${dispenseQty} ${dispenseTargetDrug.unit})`}
-                  </span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================================== */}
-      {/* 2. CUSTOM RESTOCK / INWARD STOCK MODAL                                */}
-      {/* ===================================================================== */}
-      {showRestockModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center">
-                  <PackagePlus className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Emergency Stock Replenishment</h3>
-                  <p className="text-[11px] text-slate-300">
-                    Receive depot dispatch or vaccine replenishment batch
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowRestockModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleRestockSubmit} className="p-5 space-y-4 text-xs text-slate-700">
-              <div className="space-y-1">
-                <label className="font-semibold text-xs text-slate-900">
-                  Select Emergency Medicine to Replenish
-                </label>
-                <select
-                  value={restockDrugId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setRestockDrugId(id);
-                    const item = items.find((i) => i.drugId === id);
-                    if (item) {
-                      setRestockStorage(item.storageLocation || 'Cold-Chain ILR 2 (3.4°C)');
-                    }
-                  }}
-                  className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                >
-                  {emergencyItems.map((item) => (
-                    <option key={item.drugId} value={item.drugId}>
-                      {item.drugName} ({item.genericName}) — Current: {item.quantity} {item.unit} ({item.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Restock Quantity Received
-                  </label>
-                  <span className="text-[11px] text-slate-500">
-                    Current Shelf Stock:{' '}
-                    <strong className="text-slate-900">
-                      {items.find((i) => i.drugId === restockDrugId)?.quantity ?? 0}
-                    </strong>{' '}
-                    {items.find((i) => i.drugId === restockDrugId)?.unit}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={restockQty}
-                    onChange={(e) => setRestockQty(Math.max(1, parseInt(e.target.value, 10) || 0))}
-                    className="w-full h-10 px-3 rounded-lg bg-slate-50 border border-slate-300 text-base font-mono font-bold text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                    placeholder="Enter quantity"
-                  />
-                  <span className="text-xs font-semibold text-slate-500 shrink-0 uppercase px-2 py-2.5 bg-slate-100 rounded-lg border border-slate-200">
-                    {items.find((i) => i.drugId === restockDrugId)?.unit || 'Units'}
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[11px] text-slate-500 font-medium mr-1">Quick Presets:</span>
-                  {[5, 10, 25, 50, 100].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setRestockQty(preset)}
-                      className={`px-2.5 py-1 rounded text-xs font-mono font-semibold border transition-all ${
-                        restockQty === preset
-                          ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      +{preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between">
-                <div>
-                  <span className="font-semibold block">Updated Stock Level After Restock:</span>
-                  <span className="text-[11px] text-emerald-700">
-                    {(items.find((i) => i.drugId === restockDrugId)?.quantity ?? 0)} + {restockQty} ={' '}
-                    <strong>
-                      {(items.find((i) => i.drugId === restockDrugId)?.quantity ?? 0) + restockQty}{' '}
-                      {items.find((i) => i.drugId === restockDrugId)?.unit}
-                    </strong>
-                  </span>
-                </div>
-                <span className="font-mono font-bold text-base text-emerald-800">
-                  +{(items.find((i) => i.drugId === restockDrugId)?.quantity ?? 0) + restockQty}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Batch / Lot Number
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={restockBatch}
-                    onChange={(e) => setRestockBatch(e.target.value)}
-                    placeholder="e.g. LOT-2026-99"
-                    className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Expiry Date
-                  </label>
-                  <input
-                    type="month"
-                    required
-                    value={restockExpiry}
-                    onChange={(e) => setRestockExpiry(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Storage Shelf / Cold ILR
-                  </label>
-                  <input
-                    type="text"
-                    value={restockStorage}
-                    onChange={(e) => setRestockStorage(e.target.value)}
-                    placeholder="e.g. Cold-Chain ILR 2 (3.4°C)"
-                    className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-semibold text-xs text-slate-900">
-                    Depot Invoice / Challan #
-                  </label>
-                  <input
-                    type="text"
-                    value={restockChallan}
-                    onChange={(e) => setRestockChallan(e.target.value)}
-                    placeholder="e.g. DEPOT-RAIGAD-CH-4819"
-                    className="w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600"
-                  />
-                </div>
-              </div>
-
-              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                  <span>Verified Medical Officer Signature Logged</span>
-                </div>
-                <span className="font-mono text-slate-400 text-[10px]">Audit Logged</span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowRestockModal(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingRestock || restockQty <= 0}
-                  className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs flex items-center gap-2 disabled:opacity-50 transition-all"
-                >
-                  <PackagePlus className="w-4 h-4" />
-                  <span>
-                    {isSubmittingRestock
-                      ? 'Committing Restock...'
-                      : `Confirm Restock (+${restockQty} Units)`}
-                  </span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================================== */}
       {/* NAVIGATION BREADCRUMB & HEADER                                        */}
       {/* ===================================================================== */}
       <div className="mb-6 space-y-3">
         <Link
-          href="/rapid-desk"
+          href="/rapid-desk?view=important"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-teal-700 hover:underline transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Dispensary Shelf Ledger</span>
+          <span>Back to Important Medicines Desk</span>
         </Link>
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -627,19 +105,18 @@ function EmergencyTriageContent() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              Dedicated triage view for cold-chain vaccines and life-saving antidotes. High-emphasis action cards are surfaced exclusively for stockouts and low-buffer items requiring urgent clinical intervention.
+              Dedicated triage view for cold-chain vaccines and life-saving antidotes. All stock adjustments are unified into the centralized Stock Operations Desk.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={() => openRestockModal()}
+            <Link
+              href="/rapid-desk?view=stock-entry"
               className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
-              type="button"
             >
-              <PackagePlus className="w-3.5 h-3.5" />
-              <span>+ Inward Stock Delivery</span>
-            </button>
+              <Zap className="w-3.5 h-3.5" />
+              <span>⚡ Stock Operations Desk</span>
+            </Link>
             <Link
               href="/locator?drug=DRUG-ASV-01"
               className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-xs flex items-center gap-1.5 transition-all"
@@ -660,13 +137,17 @@ function EmergencyTriageContent() {
           <span className="font-mono font-bold text-base text-slate-900">{emergencyItems.length} Drugs</span>
         </div>
 
-        <div className={`p-3.5 rounded-xl border shadow-xs flex items-center justify-between ${
-          urgentEmergencyItems.length > 0 ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-white border-slate-200'
-        }`}>
+        <div
+          className={`p-3.5 rounded-xl border shadow-xs flex items-center justify-between ${
+            urgentEmergencyItems.length > 0 ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-white border-slate-200'
+          }`}
+        >
           <span className="text-xs font-semibold">Urgent Triage Attention Needed</span>
-          <span className={`font-mono font-bold text-base ${
-            urgentEmergencyItems.length > 0 ? 'text-rose-700' : 'text-slate-400'
-          }`}>
+          <span
+            className={`font-mono font-bold text-base ${
+              urgentEmergencyItems.length > 0 ? 'text-rose-700' : 'text-slate-400'
+            }`}
+          >
             {urgentEmergencyItems.length} {urgentEmergencyItems.length === 1 ? 'Item' : 'Items'}
           </span>
         </div>
@@ -692,7 +173,8 @@ function EmergencyTriageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {urgentEmergencyItems.map((item) => {
               const isOut = item.quantity === 0;
-              const bufferRatio = item.threshold > 0 ? Math.min(100, Math.round((item.quantity / item.threshold) * 100)) : 0;
+              const bufferRatio =
+                item.threshold > 0 ? Math.min(100, Math.round((item.quantity / item.threshold) * 100)) : 0;
 
               return (
                 <div
@@ -707,9 +189,7 @@ function EmergencyTriageContent() {
                     {/* Header: Drug Title & Status Badge */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                          {item.drugName}
-                        </h3>
+                        <h3 className="text-base font-bold text-slate-900 tracking-tight">{item.drugName}</h3>
                         <p className="text-xs text-slate-500 font-medium mt-0.5">
                           {item.genericName} · {item.form}
                         </p>
@@ -725,9 +205,10 @@ function EmergencyTriageContent() {
                       </span>
                     </div>
 
-                    {/* Muted Single-Line Caption (Demoted Metadata Pattern) */}
+                    {/* Muted Single-Line Caption */}
                     <p className="text-[11px] text-slate-400 mt-2.5 font-mono truncate">
-                      Batch {item.batchNumber || 'LOT-2026-01'} · Exp {item.expiryDate || '2027-12'} · {item.storageLocation || 'Cold-Chain ILR'} · Buffer: {item.threshold} {item.unit}
+                      Batch {item.batchNumber || 'LOT-2026-01'} · Exp {item.expiryDate || '2027-12'} ·{' '}
+                      {item.storageLocation || 'Cold-Chain ILR'} · Buffer: {item.threshold} {item.unit}
                     </p>
 
                     {/* Stock Counter & Buffer Bar */}
@@ -746,9 +227,7 @@ function EmergencyTriageContent() {
                           </span>
                         </div>
                         <span className="text-[11px] font-mono text-slate-500">
-                          {isOut
-                            ? '0% of buffer'
-                            : `${bufferRatio}% of buffer (${item.threshold} ${item.unit})`}
+                          {isOut ? '0% of buffer' : `${bufferRatio}% of buffer (${item.threshold} ${item.unit})`}
                         </span>
                       </div>
 
@@ -767,7 +246,7 @@ function EmergencyTriageContent() {
                   {/* Actions Area */}
                   <div className="space-y-2 pt-2 border-t border-slate-100">
                     {isOut ? (
-                      <div>
+                      <div className="space-y-2">
                         <Link
                           href={`/locator?drug=${item.drugId}`}
                           className="w-full h-9 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
@@ -775,55 +254,22 @@ function EmergencyTriageContent() {
                           <Network className="w-3.5 h-3.5" />
                           <span>Find in Nearby Clinics (Referral) →</span>
                         </Link>
-                        <div className="flex items-center justify-center pt-2">
-                          <button
-                            onClick={() => openRestockModal(item.drugId)}
-                            className="text-[11px] text-slate-500 hover:text-teal-700 font-semibold hover:underline flex items-center gap-1"
-                            type="button"
-                          >
-                            <PackagePlus className="w-3 h-3 text-teal-600" />
-                            <span>+ Inward delivery restock</span>
-                          </button>
-                        </div>
+                        <Link
+                          href={`/rapid-desk?view=stock-entry&drug=${item.drugId}`}
+                          className="w-full h-8 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>⚡ Manage in Stock Desk →</span>
+                        </Link>
                       </div>
                     ) : (
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => openDispenseModal(item)}
-                            className="flex-1 h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
-                            type="button"
-                          >
-                            <MinusCircle className="w-3.5 h-3.5" />
-                            <span>Dispense...</span>
-                          </button>
-                          <button
-                            onClick={() => handleQuickDispense(item.drugId)}
-                            className="h-9 px-3 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-semibold rounded-lg transition-colors"
-                            title="Quick Dispense 1 unit"
-                            type="button"
-                          >
-                            -1
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] pt-2 text-slate-500">
-                          <button
-                            onClick={() => openRestockModal(item.drugId)}
-                            className="hover:text-teal-700 font-medium hover:underline flex items-center gap-1"
-                            type="button"
-                          >
-                            <PackagePlus className="w-3 h-3 text-teal-600" />
-                            <span>+ Restock delivery</span>
-                          </button>
-                          <Link
-                            href={`/locator?drug=${item.drugId}`}
-                            className="hover:text-teal-700 font-medium hover:underline flex items-center gap-1"
-                          >
-                            <Network className="w-3 h-3 text-teal-600" />
-                            <span>Check network</span>
-                          </Link>
-                        </div>
-                      </div>
+                      <Link
+                        href={`/rapid-desk?view=stock-entry&drug=${item.drugId}`}
+                        className="w-full h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>⚡ Manage in Stock Desk →</span>
+                      </Link>
                     )}
                   </div>
                 </div>
@@ -832,9 +278,7 @@ function EmergencyTriageContent() {
           </div>
         </section>
       ) : (
-        /* ===================================================================== */
-        /* COMPACT REASSURANCE STATE (RULE: WHEN ALL EMERGENCY STOCK NOMINAL)   */
-        /* ===================================================================== */
+        /* Reassurance State */
         <div className="bg-white rounded-xl border border-emerald-200 p-6 mb-8 shadow-xs">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
@@ -852,10 +296,11 @@ function EmergencyTriageContent() {
             </div>
 
             <Link
-              href="/rapid-desk"
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors shrink-0"
+              href="/rapid-desk?view=stock-entry"
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1.5"
             >
-              View Full Dispensary Ledger →
+              <Zap className="w-3.5 h-3.5" />
+              <span>Open Stock Operations Desk →</span>
             </Link>
           </div>
         </div>
@@ -871,7 +316,7 @@ function EmergencyTriageContent() {
               Nominal Emergency Reserves ({nominalEmergencyItems.length} Adequately Stocked)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Emergency drugs currently meeting safety buffer requirements. Displayed with calm styling to preserve triage signal.
+              Emergency drugs currently meeting safety buffer requirements.
             </p>
           </div>
         </div>
@@ -914,12 +359,8 @@ function EmergencyTriageContent() {
 
                       <td className="py-3.5 px-4">
                         <div className="flex items-baseline gap-1.5 font-mono">
-                          <span className="text-base font-bold text-emerald-700">
-                            {item.quantity}
-                          </span>
-                          <span className="text-xs text-slate-400 font-sans font-normal">
-                            {item.unit}
-                          </span>
+                          <span className="text-base font-bold text-emerald-700">{item.quantity}</span>
+                          <span className="text-xs text-slate-400 font-sans font-normal">{item.unit}</span>
                         </div>
                       </td>
 
@@ -930,23 +371,13 @@ function EmergencyTriageContent() {
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleQuickDispense(item.drugId)}
-                            className="px-2 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold rounded border border-teal-200 shadow-2xs transition-all active:scale-95 text-xs"
-                            title="1-Tap Quick Dispense (-1)"
-                            type="button"
-                          >
-                            -1
-                          </button>
-                          <button
-                            onClick={() => openDispenseModal(item)}
-                            className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded shadow-2xs transition-colors text-xs"
-                            type="button"
-                          >
-                            Dispense
-                          </button>
-                        </div>
+                        <Link
+                          href={`/rapid-desk?view=stock-entry&drug=${item.drugId}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg shadow-2xs transition-colors text-xs"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>⚡ Manage Stock</span>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -962,7 +393,9 @@ function EmergencyTriageContent() {
 
 export default function EmergencyPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Loading Emergency Triage...</div>}>
+    <Suspense
+      fallback={<div className="p-8 text-center text-xs text-slate-400 font-mono">Loading Emergency Triage...</div>}
+    >
       <EmergencyTriageContent />
     </Suspense>
   );

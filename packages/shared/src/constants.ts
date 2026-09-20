@@ -6,6 +6,7 @@ export const TABLE_NAMES = {
   WORKERS: 'Meditory_Workers',
   INVENTORY: 'Meditory_Inventory',
   AUDIT_LOGS: 'Meditory_AuditLogs',
+  REQUISITIONS: 'Meditory_Requisitions',
 } as const;
 
 /**
@@ -13,6 +14,8 @@ export const TABLE_NAMES = {
  */
 export const INDEX_NAMES = {
   INVENTORY_BY_DRUG: 'DrugLookupIndex', // To find which clinics have a specific medicine
+  REQUISITIONS_BY_DONOR: 'DonorRequisitionIndex',
+  REQUISITIONS_BY_REQUESTER: 'RequesterRequisitionIndex',
 } as const;
 
 /**
@@ -58,3 +61,29 @@ export const AUDIT_ACTION = {
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION];
+
+/**
+ * Inter-Clinic Requisition Statuses
+ */
+export const REQUISITION_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  IN_TRANSIT: 'IN_TRANSIT',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type RequisitionStatus = (typeof REQUISITION_STATUS)[keyof typeof REQUISITION_STATUS];
+
+/**
+ * Inter-Clinic Requisition Urgency Tiers
+ */
+export const REQUISITION_URGENCY = {
+  EMERGENCY: 'EMERGENCY',
+  ESSENTIAL: 'ESSENTIAL',
+  ROUTINE: 'ROUTINE',
+} as const;
+
+export type RequisitionUrgency = (typeof REQUISITION_URGENCY)[keyof typeof REQUISITION_URGENCY];
+

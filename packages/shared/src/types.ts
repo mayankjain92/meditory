@@ -1,5 +1,5 @@
-export type { FacilityType, DrugTier, StockStatus, AuditAction } from './constants';
-import type { FacilityType, DrugTier, StockStatus, AuditAction } from './constants';
+export type { FacilityType, DrugTier, StockStatus, AuditAction, RequisitionStatus, RequisitionUrgency } from './constants';
+import type { FacilityType, DrugTier, StockStatus, AuditAction, RequisitionStatus, RequisitionUrgency } from './constants';
 
 /**
  * Public Health Clinic / Facility Entity
@@ -87,6 +87,10 @@ export interface AuditLogEntry {
   drugName: string;
   workerId: string;
   workerName: string;
+  dispensedTo?: string;    // Patient Name / OPD Case / Emergency Bed / Supplier Depot
+  patientName?: string;    // Specific Patient Name if recorded
+  notes?: string;          // Clinical or prescription reference notes
+  batchNumber?: string;    // Lot / Batch reference
 }
 
 /**
@@ -101,4 +105,33 @@ export interface JWTPayload {
   role: 'facility_worker';
   iat?: number;
   exp?: number;
+}
+
+/**
+ * Inter-Clinic Medicine Requisition Entity (Two-Way Handshake)
+ */
+export interface Requisition {
+  id: string;                      // e.g. "REQ-1726830000000-AB12"
+  requesterFacilityId: string;     // e.g. "PHC-ALIBAG-01"
+  requesterFacilityName: string;   // e.g. "Alibag Primary Health Centre"
+  donorFacilityId: string;         // e.g. "CHC-PEN-01"
+  donorFacilityName: string;       // e.g. "Pen Community Health Centre"
+  drugId: string;                  // e.g. "DRUG-ASV-01"
+  drugName: string;                // e.g. "Anti-Snake Venom (ASV) Polyvalent"
+  genericName?: string;
+  quantity: number;                // e.g. 2
+  unit: string;                    // e.g. "vials"
+  urgency: RequisitionUrgency;     // "EMERGENCY" | "ESSENTIAL" | "ROUTINE"
+  status: RequisitionStatus;       // "PENDING" | "APPROVED" | "REJECTED" | "IN_TRANSIT" | "COMPLETED" | "CANCELLED"
+  handshakePin?: string;           // 6-digit cryptographic PIN for pickup verification (e.g. "839201")
+  patientNotes?: string;           // Emergency referral notes / patient case reference
+  rejectionReason?: string;
+  requestedByWorkerId: string;
+  requestedByWorkerName: string;
+  respondedByWorkerId?: string;
+  respondedByWorkerName?: string;
+  dispensedAt?: string;
+  createdAt: string;               // ISO String
+  updatedAt: string;               // ISO String
+  completedAt?: string;            // ISO String
 }

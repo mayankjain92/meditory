@@ -25,14 +25,15 @@ import {
   PlusCircle,
 } from 'lucide-react';
 
-import { api } from '@/lib/api-client';
+import { api, setStoredSession } from '@/lib/api-client';
+import MedicalBackground from '@/components/MedicalBackground';
 
 export default function LoginPage() {
   const router = useRouter();
 
   // Form State
-  const [email, setEmail] = useState('rahul.sharma@phc-alibag.in');
-  const [password, setPassword] = useState('Password@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberTerminal, setRememberTerminal] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<'EN' | 'HI' | 'TA' | 'TE'>('EN');
@@ -67,10 +68,8 @@ export default function LoginPage() {
     try {
       const data = await api.post('/api/auth/login', { email: email.trim(), password });
 
-      // Store the token and worker profile in Session Storage per PRD Section 6.3
-      if (data.token) sessionStorage.setItem('meditory_token', data.token);
-      if (data.user) sessionStorage.setItem('meditory_user', JSON.stringify(data.user));
-      if (data.facility) sessionStorage.setItem('meditory_facility', JSON.stringify(data.facility));
+      // Store the token and worker profile across session and local storage
+      setStoredSession(data.token, data.user, data.facility);
 
       setLoginSuccess(true);
       showToast(`Welcome, ${data.user?.name || 'Staff'}. Terminal Session Established.`);
@@ -85,15 +84,18 @@ export default function LoginPage() {
   };
 
   const triggerEmergencyProtocol = () => {
-    sessionStorage.setItem('meditory_token', 'emergency_override_token');
-    sessionStorage.setItem(
-      'meditory_user',
-      JSON.stringify({
+    setStoredSession(
+      'emergency_override_token',
+      {
         id: 'USR-EMERGENCY',
         name: 'Emergency Duty Officer',
         role: 'facility_worker',
-        facilityId: 'PHC-SECTOR4-01',
-      })
+        facilityId: 'PHC-ALIBAG-01',
+      },
+      {
+        id: 'PHC-ALIBAG-01',
+        name: 'Alibag Primary Health Centre',
+      }
     );
     router.push('/rapid-desk?mode=emergency');
   };
@@ -103,36 +105,17 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="w-full min-h-screen bg-surface flex flex-col justify-between overflow-x-hidden relative select-none">
-      {/* Background Graphic Layers */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        {/* Blurred Dispensary Photography Texture */}
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-25 filter blur-[2px] scale-105"
-          style={{ backgroundImage: "url('/clinic-bg.jpg')" }}
-        />
-        {/* Ambient Clinical Color Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-surface via-surface/90 to-surface-container/80" />
-        {/* Clinical Grid Dot Pattern */}
-        <div
-          className="absolute inset-0 opacity-15"
-          style={{
-            backgroundImage: 'radial-gradient(#0f4c5c 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
-        />
-      </div>
-
+    <MedicalBackground showToggle={true}>
       {/* Floating Toast Notification */}
       {feedbackToast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-primary text-white text-xs px-4 py-2.5 rounded-lg shadow-xl border border-primary-container flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
-          <HeartPulse className="w-4 h-4 text-secondary-fixed shrink-0" />
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs px-4 py-2.5 rounded-lg shadow-xl border border-teal-500/30 flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
+          <HeartPulse className="w-4 h-4 text-teal-400 shrink-0" />
           <span>{feedbackToast}</span>
         </div>
       )}
 
       {/* 1. Operational Header Strip */}
-      <header className="w-full max-w-7xl mx-auto px-6 py-4 flex flex-wrap items-center justify-between gap-4 relative z-10">
+      <header className="w-full max-w-7xl mx-auto px-6 py-3 my-3 rounded-2xl bg-white/90 backdrop-blur-md border border-white/80 shadow-lg flex flex-wrap items-center justify-between gap-4 relative z-10">
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center justify-center p-2 rounded bg-primary-container text-on-primary shadow-sm">
             <Hospital className="w-5 h-5" />
@@ -155,6 +138,19 @@ export default function LoginPage() {
 
         {/* Right Controls: Sync Telemetry & Language Toggle */}
         <div className="flex items-center gap-4">
+          {/* District Admin Authority Portal Link */}
+          <a
+            href="http://localhost:3005"
+            target="_blank"
+            rel="noreferrer"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-slate-200 text-xs text-on-surface hover:bg-slate-50 transition-all shadow-xs"
+            title="District Health Authority Registration Approval Portal (Port 3005)"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+            <span className="font-semibold text-[11px]">District Admin Portal</span>
+            <span className="text-[10px] text-primary-container font-mono font-bold">:3005</span>
+          </a>
+
           {/* Real-time Sync Status Badge */}
           <div className="flex items-center gap-2.5 px-3 py-1.5 rounded bg-surface-container-lowest shadow-sm border border-slate-200/70">
             <span className="relative flex h-2.5 w-2.5">
@@ -222,8 +218,8 @@ export default function LoginPage() {
       </header>
 
       {/* 2. Central Workstation Login Canvas */}
-      <div className="flex-1 flex items-center justify-center px-4 py-8 relative z-10">
-        <div className="w-full max-w-[490px] bg-surface-container-lowest rounded-xl shadow-xl overflow-hidden border border-slate-200/70">
+      <div className="flex-1 flex items-center justify-center px-4 py-6 relative z-10">
+        <div className="w-full max-w-[490px] bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden border border-white/80 ring-1 ring-slate-900/5">
           {/* Top Clinical Accent Bar */}
           <div className="h-1.5 w-full bg-primary-container" />
 
@@ -247,66 +243,24 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Demo Clinic Accounts Quick-Select */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
-                  Demo Clinic Accounts (Raigad District)
-                </span>
-                <span className="text-[10px] text-primary-container font-mono">Password@123</span>
+            {/* Clinic Registration Callout Card */}
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-primary-container/10 border border-primary-container/20 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-primary-container/15 flex items-center justify-center text-primary-container shrink-0">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-semibold text-on-surface block">New Clinic Facility?</span>
+                  <p className="text-[11px] text-on-surface-variant">Register your PHC/CHC for network access</p>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-1.5 text-left">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('rahul.sharma@phc-alibag.in');
-                    setPassword('Password@123');
-                    showToast('Selected Alibag PHC (Demo: 0 ASV stock & Referral)');
-                  }}
-                  className={`p-2 rounded border text-left transition-all ${
-                    email.includes('alibag')
-                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
-                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="text-[11px] font-bold truncate">Alibag PHC</div>
-                  <div className="text-[10px] text-slate-500 truncate">Dr. Rahul (0 ASV)</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('priya.deshmukh@phc-vadkhal.in');
-                    setPassword('Password@123');
-                    showToast('Selected Vadkhal PHC (Demo: Low Stock Alarm)');
-                  }}
-                  className={`p-2 rounded border text-left transition-all ${
-                    email.includes('vadkhal')
-                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
-                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="text-[11px] font-bold truncate">Vadkhal PHC</div>
-                  <div className="text-[10px] text-slate-500 truncate">Dr. Priya (Low)</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('amit.patil@chc-pen.in');
-                    setPassword('Password@123');
-                    showToast('Selected Pen CHC (Demo: Surplus Stock Destination)');
-                  }}
-                  className={`p-2 rounded border text-left transition-all ${
-                    email.includes('pen')
-                      ? 'bg-primary-container/10 border-primary-container text-primary-container font-semibold'
-                      : 'bg-surface-container-low border-slate-200 text-on-surface-variant hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="text-[11px] font-bold truncate">Pen CHC</div>
-                  <div className="text-[10px] text-slate-500 truncate">Dr. Amit (25 ASV)</div>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => router.push('/register')}
+                className="px-3 py-1.5 rounded bg-primary-container text-white text-[11px] font-bold hover:bg-primary transition-all shadow-xs shrink-0"
+              >
+                Register Clinic
+              </button>
             </div>
 
             {/* Error Message Box */}
@@ -509,7 +463,7 @@ export default function LoginPage() {
       </div>
 
       {/* 4. Operational Footer Bar with Quick Rural Support */}
-      <footer className="w-full max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 text-on-surface-variant relative z-10 text-xs">
+      <footer className="w-full max-w-7xl mx-auto px-6 py-3 my-3 rounded-2xl bg-white/90 backdrop-blur-md border border-white/80 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4 text-on-surface-variant relative z-10 text-xs">
         <div className="flex items-center gap-4">
           <span className="font-semibold text-on-surface">Rural Dispensary Helpdesk:</span>
           <a
@@ -541,6 +495,6 @@ export default function LoginPage() {
           <span>National Health Stack v4.2</span>
         </div>
       </footer>
-    </main>
+    </MedicalBackground>
   );
 }

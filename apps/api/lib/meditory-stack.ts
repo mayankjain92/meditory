@@ -59,6 +59,28 @@ export class MeditoryStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // 1.5 Inter-Clinic Requisitions Table (Two-Way Handshake)
+    const requisitionsTable = new dynamodb.Table(this, 'RequisitionsTable', {
+      tableName: TABLE_NAMES.REQUISITIONS,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    requisitionsTable.addGlobalSecondaryIndex({
+      indexName: INDEX_NAMES.REQUISITIONS_BY_DONOR,
+      partitionKey: { name: 'donorFacilityId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    requisitionsTable.addGlobalSecondaryIndex({
+      indexName: INDEX_NAMES.REQUISITIONS_BY_REQUESTER,
+      partitionKey: { name: 'requesterFacilityId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // =========================================================================
     // 2. Common Lambda Function Environment & Bundling Configuration
     // =========================================================================
@@ -73,6 +95,7 @@ export class MeditoryStack extends cdk.Stack {
         TABLE_WORKERS: workersTable.tableName,
         TABLE_INVENTORY: inventoryTable.tableName,
         TABLE_AUDIT_LOGS: auditLogsTable.tableName,
+        TABLE_REQUISITIONS: requisitionsTable.tableName,
       },
       bundling: {
         minify: true,
@@ -143,6 +166,38 @@ export class MeditoryStack extends cdk.Stack {
       description: 'Meditory Clinic Audit Trail query handler',
     });
 
+    // 3.7 Inter-Clinic Requisition Handlers (Two-Way Handshake)
+    const requisitionFn = new nodejs.NodejsFunction(this, 'RequisitionHandler', {
+      ...commonLambdaProps,
+      entry: path.join(handlersDir, 'requisitions.ts'),
+      handler: 'createRequisitionHandler',
+      description: 'Meditory Inter-Clinic Requisitions and Handshake Dispensing',
+    });
+
+    // 3.8 Clinic Doctors Directory Handler
+    const doctorsFn = new nodejs.NodejsFunction(this, 'DoctorsHandler', {
+      ...commonLambdaProps,
+      entry: path.join(handlersDir, 'doctors.ts'),
+      handler: 'doctorsHandler',
+      description: 'Meditory Clinic Doctors and Facilities Directory',
+    });
+
+    // 3.9 Offline Batch Sync Handler
+    const syncFn = new nodejs.NodejsFunction(this, 'SyncHandler', {
+      ...commonLambdaProps,
+      entry: path.join(handlersDir, 'sync.ts'),
+      handler: 'syncBatchHandler',
+      description: 'Meditory Offline Batch Sync Handler',
+    });
+
+    // 3.10 Clinic Registration & Admin Approval Handler
+    const registrationFn = new nodejs.NodejsFunction(this, 'RegistrationHandler', {
+      ...commonLambdaProps,
+      entry: path.join(handlersDir, 'registration.ts'),
+      handler: 'registerFacilityHandler',
+      description: 'Meditory Clinic Registration and District Admin Approvals',
+    });
+
     // =========================================================================
     // 4. Least-Privilege IAM Grants (Zero Security Over-Privileging)
     // =========================================================================
@@ -165,6 +220,21 @@ export class MeditoryStack extends cdk.Stack {
 
     auditLogsTable.grantReadData(auditFn);
 
+    requisitionsTable.grantReadWriteData(requisitionFn);
+    inventoryTable.grantReadWriteData(requisitionFn);
+    auditLogsTable.grantWriteData(requisitionFn);
+    facilitiesTable.grantReadData(requisitionFn);
+
+    facilitiesTable.grantReadData(doctorsFn);
+    workersTable.grantReadData(doctorsFn);
+
+    inventoryTable.grantReadWriteData(syncFn);
+    auditLogsTable.grantReadWriteData(syncFn);
+
+    facilitiesTable.grantReadWriteData(registrationFn);
+    workersTable.grantReadWriteData(registrationFn);
+    inventoryTable.grantReadWriteData(registrationFn);
+
     // =========================================================================
     // 5. Amazon API Gateway HTTP API (v2) with CORS & Cookie Support
     // =========================================================================
@@ -175,6 +245,7 @@ export class MeditoryStack extends cdk.Stack {
         allowOrigins: [
           'http://localhost:3000',
           'http://localhost:3001',
+          'http://localhost:3005',
           'https://*.vercel.app',
           'https://*.amplifyapp.com',
         ],
@@ -198,6 +269,10 @@ export class MeditoryStack extends cdk.Stack {
     const restockIntegration = new HttpLambdaIntegration('RestockIntegration', restockFn);
     const locatorIntegration = new HttpLambdaIntegration('LocatorIntegration', locatorFn);
     const auditIntegration = new HttpLambdaIntegration('AuditIntegration', auditFn);
+    const requisitionIntegration = new HttpLambdaIntegration('RequisitionIntegration', requisitionFn);
+    const doctorsIntegration = new HttpLambdaIntegration('DoctorsIntegration', doctorsFn);
+    const syncIntegration = new HttpLambdaIntegration('SyncIntegration', syncFn);
+    const registrationIntegration = new HttpLambdaIntegration('RegistrationIntegration', registrationFn);
 
     // Route Definitions (supporting both standard and /api prefix paths)
     const routeMappings = [
@@ -208,8 +283,20 @@ export class MeditoryStack extends cdk.Stack {
       { path: '/clinic/dispense', method: apigwv2.HttpMethod.POST, integration: dispenseIntegration },
       { path: '/clinic/restock', method: apigwv2.HttpMethod.POST, integration: restockIntegration },
       { path: '/clinic/audit', method: apigwv2.HttpMethod.GET, integration: auditIntegration },
+      { path: '/clinic/doctors', method: apigwv2.HttpMethod.GET, integration: doctorsIntegration },
+      { path: '/clinic/sync-batch', method: apigwv2.HttpMethod.POST, integration: syncIntegration },
       { path: '/network/stock-locator', method: apigwv2.HttpMethod.GET, integration: locatorIntegration },
+      { path: '/requisitions/request', method: apigwv2.HttpMethod.POST, integration: requisitionIntegration },
+      { path: '/requisitions', method: apigwv2.HttpMethod.GET, integration: requisitionIntegration },
+      { path: '/requisitions/respond', method: apigwv2.HttpMethod.POST, integration: requisitionIntegration },
+      { path: '/requisitions/handshake-dispense', method: apigwv2.HttpMethod.POST, integration: requisitionIntegration },
+      { path: '/requisitions/confirm-intake', method: apigwv2.HttpMethod.POST, integration: requisitionIntegration },
+      { path: '/facilities/register', method: apigwv2.HttpMethod.POST, integration: registrationIntegration },
+      { path: '/admin/registrations', method: apigwv2.HttpMethod.GET, integration: registrationIntegration },
+      { path: '/admin/registrations/approve', method: apigwv2.HttpMethod.POST, integration: registrationIntegration },
+      { path: '/admin/registrations/reject', method: apigwv2.HttpMethod.POST, integration: registrationIntegration },
     ];
+
 
     for (const r of routeMappings) {
       httpApi.addRoutes({

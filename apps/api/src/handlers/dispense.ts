@@ -1,5 +1,5 @@
 import { APIGatewayProxyEventV2 } from 'aws-lambda';
-import { GetCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   TABLE_NAMES,
   STOCK_STATUS,
@@ -89,35 +89,25 @@ export async function dispenseHandler(event: APIGatewayProxyEventV2) {
   const newStatus = computeStockStatus(newQuantity, currentItem.threshold);
   const now = new Date().toISOString();
 
-  // 2. Atomic DynamoDB Conditional Update (Prevents race conditions and negative stock)
-  try {
-    await docClient.send(
-      new UpdateCommand({
-        TableName: TABLE_NAMES.INVENTORY,
-        Key: { facilityId, drugId },
-        UpdateExpression:
-          'SET quantity = quantity - :qty, updatedAt = :now, lastDispensedAt = :now, #st = :status',
-        ConditionExpression: 'quantity >= :qty',
-        ExpressionAttributeNames: {
-          '#st': 'status',
-        },
-        ExpressionAttributeValues: {
-          ':qty': dispenseQty,
-          ':now': now,
-          ':status': newStatus,
-        },
-      })
+  const rawDispensedTo = body.dispensedTo?.trim() || body.patientName?.trim();
+  if (
+    rawDispensedTo &&
+    (rawDispensedTo.toLowerCase() === 'walk-in' ||
+      rawDispensedTo.toLowerCase() === 'anyone' ||
+      rawDispensedTo.toLowerCase() === 'unverified')
+  ) {
+    return badRequest(
+      'Restricted Policy: Meditory is a Clinic-to-Clinic network. Medicines can only be dispensed for internal in-clinic patient treatment or upon an authorized request from a clinic (not to unverified walk-ins).'
     );
-  } catch (err: unknown) {
-    if ((err as { name?: string }).name === 'ConditionalCheckFailedException') {
-      return badRequest(
-        `Atomic transaction failed: Another worker dispensed this medicine concurrently or stock fell below ${dispenseQty}.`
-      );
-    }
-    throw err;
   }
 
-  // 3. Write immutable audit log record
+  const dispensedTo =
+    rawDispensedTo ||
+    (body.notes?.trim() ? `In-Clinic Use (${body.notes.trim()})` : 'Internal Clinic Patient Care & Administration');
+  const patientName = body.patientName?.trim() || undefined;
+  const notes = body.notes?.trim() || undefined;
+
+  // 2. Prepare immutable audit log record
   const auditEntry = {
     facilityId,
     timestamp: now,
@@ -129,14 +119,52 @@ export async function dispenseHandler(event: APIGatewayProxyEventV2) {
     drugName: currentItem.drugName,
     workerId: session.userId,
     workerName: session.name,
+    dispensedTo,
+    patientName,
+    notes,
+    batchNumber: currentItem.batchNumber || undefined,
   };
 
-  await docClient.send(
-    new PutCommand({
-      TableName: TABLE_NAMES.AUDIT_LOGS,
-      Item: auditEntry,
-    })
-  );
+  // 3. Atomic DynamoDB Transaction (Inventory Conditional Decrement + Audit Log Insertion)
+  try {
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: TABLE_NAMES.INVENTORY,
+              Key: { facilityId, drugId },
+              UpdateExpression:
+                'SET quantity = quantity - :qty, updatedAt = :now, lastDispensedAt = :now, #st = :status',
+              ConditionExpression: 'quantity >= :qty',
+              ExpressionAttributeNames: {
+                '#st': 'status',
+              },
+              ExpressionAttributeValues: {
+                ':qty': dispenseQty,
+                ':now': now,
+                ':status': newStatus,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: TABLE_NAMES.AUDIT_LOGS,
+              Item: auditEntry,
+            },
+          },
+        ],
+      })
+    );
+  } catch (err: unknown) {
+    const errName = (err as { name?: string }).name;
+    if (errName === 'TransactionCanceledException' || errName === 'ConditionalCheckFailedException') {
+      return badRequest(
+        `Atomic transaction failed: Another worker dispensed this medicine concurrently or stock fell below ${dispenseQty}.`
+      );
+    }
+    throw err;
+  }
 
   // 4. Observability: Emit CloudWatch Embedded Metric Format (EMF) log
   const isAlarmTriggered = currentItem.isCritical && newQuantity < currentItem.threshold;

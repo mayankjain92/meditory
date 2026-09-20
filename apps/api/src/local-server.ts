@@ -7,6 +7,22 @@ import { dispenseHandler } from './handlers/dispense.js';
 import { restockHandler } from './handlers/restock.js';
 import { locatorHandler } from './handlers/locator.js';
 import { auditHandler } from './handlers/audit.js';
+import { doctorsHandler } from './handlers/doctors.js';
+import {
+  createRequisitionHandler,
+  getRequisitionsHandler,
+  respondRequisitionHandler,
+  handshakeDispenseHandler,
+  confirmIntakeHandler,
+} from './handlers/requisitions.js';
+import { syncBatchHandler } from './handlers/sync.js';
+import {
+  registerFacilityHandler,
+  getPendingRegistrationsHandler,
+  approveRegistrationHandler,
+  rejectRegistrationHandler,
+} from './handlers/registration.js';
+import { isLocal, localEndpoint, ensureTablesExist } from './shared/ddb.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
@@ -103,6 +119,28 @@ const server = http.createServer(async (req, res) => {
         response = await auditHandler(event);
       } else if (method === 'GET' && path === '/network/stock-locator') {
         response = await locatorHandler(event);
+      } else if (method === 'GET' && path === '/clinic/doctors') {
+        response = await doctorsHandler(event);
+      } else if (method === 'POST' && path === '/requisitions/request') {
+        response = await createRequisitionHandler(event);
+      } else if (method === 'GET' && path === '/requisitions') {
+        response = await getRequisitionsHandler(event);
+      } else if (method === 'POST' && path === '/requisitions/respond') {
+        response = await respondRequisitionHandler(event);
+      } else if (method === 'POST' && path === '/requisitions/handshake-dispense') {
+        response = await handshakeDispenseHandler(event);
+      } else if (method === 'POST' && path === '/requisitions/confirm-intake') {
+        response = await confirmIntakeHandler(event);
+      } else if (method === 'POST' && path === '/clinic/sync-batch') {
+        response = await syncBatchHandler(event);
+      } else if (method === 'POST' && path === '/facilities/register') {
+        response = await registerFacilityHandler(event);
+      } else if (method === 'GET' && path === '/admin/registrations') {
+        response = await getPendingRegistrationsHandler(event);
+      } else if (method === 'POST' && path === '/admin/registrations/approve') {
+        response = await approveRegistrationHandler(event);
+      } else if (method === 'POST' && path === '/admin/registrations/reject') {
+        response = await rejectRegistrationHandler(event);
       } else {
         response = {
           statusCode: 404,
@@ -118,24 +156,40 @@ const server = http.createServer(async (req, res) => {
 
       res.writeHead(response.statusCode, headers);
       res.end(response.body);
-    } catch (err) {
-      console.error(`[LocalServer Error]:`, err);
+    } catch (err: any) {
+      if (err?.code === 'ECONNREFUSED' && (err?.port === 8000 || err?.address === '127.0.0.1')) {
+        console.error(`\n❌ [LocalServer Error]: DynamoDB Local is not running on port 8000.`);
+        console.error(`👉 Run 'docker compose up -d' (or 'pnpm ddb:local') followed by 'pnpm seed' to start and seed the database.\n`);
+      } else {
+        console.error(`[LocalServer Error]:`, err);
+      }
       res.writeHead(500, {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Credentials': 'true',
       });
-      res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: String(err) }));
+      res.end(JSON.stringify({
+        error: 'INTERNAL_SERVER_ERROR',
+        message: err?.code === 'ECONNREFUSED'
+          ? 'Cannot connect to DynamoDB Local (127.0.0.1:8000). Please run "docker compose up -d" and "pnpm seed".'
+          : String(err),
+      }));
     }
   });
 });
 
 export function startLocalServer(port: number = PORT) {
-  server.listen(port, () => {
+  server.listen(port, async () => {
     console.log(`\n======================================================`);
     console.log(`🚀 [Meditory Local API Server] Running on http://localhost:${port}`);
-    console.log(`   Connected to DDB: ${process.env.DYNAMODB_ENDPOINT || 'AWS Cloud'}`);
+    console.log(`   Connected to DDB: ${isLocal ? `${localEndpoint} (Local)` : (process.env.DYNAMODB_ENDPOINT || 'AWS Cloud')}`);
     console.log(`======================================================\n`);
+
+    try {
+      await ensureTablesExist();
+    } catch (e) {
+      console.warn('[LocalServer] Warning on ensureTablesExist:', (e as Error).message);
+    }
   });
   return server;
 }

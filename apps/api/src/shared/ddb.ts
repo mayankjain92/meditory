@@ -129,4 +129,38 @@ export async function ensureTablesExist(): Promise<void> {
       BillingMode: 'PAY_PER_REQUEST',
     })
   );
+
+  // 5. Inter-Clinic Requisitions Table (PK: id, GSIs: DonorIndex, RequesterIndex)
+  await createTableIfNotExists(
+    new CreateTableCommand({
+      TableName: TABLE_NAMES.REQUISITIONS,
+      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+      AttributeDefinitions: [
+        { AttributeName: 'id', AttributeType: 'S' },
+        { AttributeName: 'donorFacilityId', AttributeType: 'S' },
+        { AttributeName: 'requesterFacilityId', AttributeType: 'S' },
+        { AttributeName: 'createdAt', AttributeType: 'S' },
+      ],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: INDEX_NAMES.REQUISITIONS_BY_DONOR,
+          KeySchema: [
+            { AttributeName: 'donorFacilityId', KeyType: 'HASH' },
+            { AttributeName: 'createdAt', KeyType: 'RANGE' },
+          ],
+          Projection: { ProjectionType: 'ALL' },
+        },
+        {
+          IndexName: INDEX_NAMES.REQUISITIONS_BY_REQUESTER,
+          KeySchema: [
+            { AttributeName: 'requesterFacilityId', KeyType: 'HASH' },
+            { AttributeName: 'createdAt', KeyType: 'RANGE' },
+          ],
+          Projection: { ProjectionType: 'ALL' },
+        },
+      ],
+      BillingMode: 'PAY_PER_REQUEST',
+    })
+  );
 }
+

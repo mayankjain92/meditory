@@ -11,8 +11,16 @@ import {
   FileText,
   ArrowRight,
   Check,
+  ArrowLeftRight,
+  Loader2,
+  Pill,
+  ShieldCheck,
+  Clock,
+  Share2,
 } from 'lucide-react';
 import { api } from '@/lib/api-client';
+import TransferRequisitionsDesk, { RequisitionItem } from '@/components/TransferRequisitionsDesk';
+import { formatEmergencyReferralText, getWhatsAppShareUrl } from '@/lib/referral-templates';
 
 interface ClinicResult {
   facilityId: string;
@@ -43,9 +51,43 @@ function StockLocatorContent() {
   const [referralModalClinic, setReferralModalClinic] = useState<ClinicResult | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Two-Way Handshake Requisition State
+  const [transferQuantity, setTransferQuantity] = useState<number>(2);
+  const [transferNotes, setTransferNotes] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [createdReq, setCreatedReq] = useState<RequisitionItem | null>(null);
+  const [isDeskOpen, setIsDeskOpen] = useState<boolean>(false);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleOpenReferralModal = (clinic: ClinicResult) => {
+    setReferralModalClinic(clinic);
+    setTransferQuantity(Math.min(2, Math.max(1, clinic.quantity)));
+    setTransferNotes('Acute clinical emergency - patient referral transfer');
+    setCreatedReq(null);
+  };
+
+  const handleCreateRequisition = async () => {
+    if (!referralModalClinic) return;
+    try {
+      setIsSubmitting(true);
+      const res = await api.post<{ success: boolean; requisition: RequisitionItem }>('/api/requisitions/request', {
+        donorFacilityId: referralModalClinic.facilityId,
+        drugId: selectedDrug,
+        quantity: transferQuantity,
+        urgency: 'EMERGENCY',
+        patientNotes: transferNotes.trim() || 'Acute emergency patient transfer',
+      });
+      setCreatedReq(res.requisition);
+      showToast(`Requisition transmitted to ${referralModalClinic.facilityName}!`);
+    } catch (err: unknown) {
+      showToast((err as Error).message || 'Failed to transmit transfer requisition.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const DRUG_CATALOG = [
@@ -94,14 +136,19 @@ function StockLocatorContent() {
         </div>
       )}
 
-      {/* Emergency Referral Modal */}
+      {/* Emergency Requisition / Handshake Modal */}
       {referralModalClinic && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
             <div className="bg-slate-900 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Network className="w-5 h-5 text-teal-400" />
-                <h3 className="font-semibold text-sm">Emergency Patient Referral Slip</h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center text-white">
+                  <ArrowLeftRight className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Inter-Clinic Transfer Requisition</h3>
+                  <span className="text-[10px] text-teal-300 font-medium">Two-Way Handshake Protocol</span>
+                </div>
               </div>
               <button
                 onClick={() => setReferralModalClinic(null)}
@@ -110,48 +157,199 @@ function StockLocatorContent() {
                 ✕
               </button>
             </div>
+
             <div className="p-5 space-y-4 text-xs text-slate-700">
-              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>
-                  <strong>Verified Stock Reserved:</strong> 2 Vials of {activeDrugObj.name} held for 45 mins at {referralModalClinic.facilityName}.
-                </span>
-              </div>
-              <div className="space-y-1.5 font-mono text-[11px] bg-slate-50 p-3 rounded-lg border border-slate-200">
-                <p>
-                  <strong>Destination Facility:</strong> {referralModalClinic.facilityName}
-                </p>
-                <p>
-                  <strong>Doctor In-Charge:</strong> {referralModalClinic.doctorInCharge}
-                </p>
-                <p>
-                  <strong>Emergency Contact:</strong> {referralModalClinic.phone}
-                </p>
-                <p>
-                  <strong>Distance / Transit:</strong> {referralModalClinic.distanceKm} km ({referralModalClinic.transitTimeEstimate})
-                </p>
-                <p>
-                  <strong>Digital Transfer Token:</strong> REF-2026-{Math.floor(100000 + Math.random() * 900000)}
-                </p>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Hand this digital authorization to the accompanying ambulance crew or emergency attendant. Destination facility receives an automatic priority alert.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => {
-                    setReferralModalClinic(null);
-                    showToast('Referral dispatch confirmed and transmitted to 108 Emergency Service.');
-                  }}
-                  className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-lg shadow-xs text-xs transition-colors"
-                >
-                  Print / Send Digital Referral Slip
-                </button>
-              </div>
+              {!createdReq ? (
+                <>
+                  {/* Target Facility & Drug Banner */}
+                  <div className="p-3 bg-teal-50 rounded-xl border border-teal-200 text-teal-950 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-teal-800 tracking-wide">
+                        Donor Destination Facility
+                      </span>
+                      <span className="font-mono text-xs font-bold text-teal-900">
+                        {referralModalClinic.distanceKm} km away
+                      </span>
+                    </div>
+                    <p className="text-sm font-bold text-slate-900">{referralModalClinic.facilityName}</p>
+                    <p className="text-[11px] text-teal-800">
+                      Doctor In-Charge: {referralModalClinic.doctorInCharge} • Phone: {referralModalClinic.phone}
+                    </p>
+                  </div>
+
+                  {/* Medicine & Quantity Selector */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      Requested Medicine & Dosage
+                    </label>
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center gap-2 font-semibold text-slate-900">
+                      <Pill className="w-4 h-4 text-teal-700 shrink-0" />
+                      <span>{activeDrugObj.name}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Quantity ({referralModalClinic.unit})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={referralModalClinic.quantity}
+                        value={transferQuantity}
+                        onChange={(e) => setTransferQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        className="w-full h-9 px-3 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        Available at donor: {referralModalClinic.quantity} {referralModalClinic.unit}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Urgency Tier
+                      </label>
+                      <div className="h-9 px-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 font-bold text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
+                        <span>EMERGENCY</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Clinical Referral Notes */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Patient Reference / Emergency Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={transferNotes}
+                      onChange={(e) => setTransferNotes(e.target.value)}
+                      placeholder="e.g. Acute venom bite case, 108 Ambulance dispatched for pickup"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600/30"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Under the <strong>Two-Way Handshake Protocol</strong>, the donor clinic must review and accept this request. Upon acceptance, a 6-digit Handshake PIN will be issued for ambulance verification.
+                  </p>
+
+                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setReferralModalClinic(null)}
+                      className="px-4 py-2 text-slate-600 hover:text-slate-900 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateRequisition}
+                      disabled={isSubmitting}
+                      className="px-5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-lg shadow-xs text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Transmitting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          <span>Transmit Handshake Requisition</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* Post-Submission Handshake Status Card */
+                <div className="space-y-4 py-2">
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-xs">Requisition Transmitted Successfully!</h4>
+                      <p className="text-[11px] text-emerald-800 mt-0.5">
+                        Transmitted to <strong>{createdReq.donorFacilityName}</strong> for {createdReq.quantity} {createdReq.unit} of {createdReq.drugName}.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-[11px] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Requisition ID:</span>
+                      <span className="font-bold text-slate-800">{createdReq.id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Current Status:</span>
+                      <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        {createdReq.status}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Handshake PIN:</span>
+                      <span className="text-slate-600">Pending Donor Acceptance</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    The medical officer at {createdReq.donorFacilityName} is now reviewing the request. Once accepted, your 6-digit Handshake PIN will be visible in the <strong>Transfers Desk</strong>. Give this PIN to your 108 ambulance crew for pickup.
+                  </p>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setReferralModalClinic(null)}
+                      className="px-3 py-2 text-slate-600 hover:text-slate-900 text-xs font-semibold"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const referralText = formatEmergencyReferralText({
+                          patientName: 'Emergency Triage Referral',
+                          diagnosis: transferNotes || `${activeDrugObj.name} Urgent Administration`,
+                          drugNeeded: activeDrugObj.name,
+                          dosageOrQty: `${transferQuantity} ${referralModalClinic.unit}`,
+                          urgency: 'CRITICAL (Immediate Ambulance)',
+                          referringFacility: 'Alibag Primary Health Centre',
+                          referringDoctor: 'Dr. Rahul Sharma',
+                          referringPhone: '+91 2141 222045',
+                          receivingFacility: createdReq.donorFacilityName,
+                          receivingPhone: referralModalClinic.phone,
+                          ambulanceStatus: '108 Ambulance Dispatched',
+                          clinicalNotes: `Meditory Requisition ID: ${createdReq.id}`,
+                        });
+                        const url = getWhatsAppShareUrl(referralModalClinic.phone, referralText);
+                        window.open(url, '_blank');
+                      }}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-xs text-xs flex items-center gap-1.5 transition-colors"
+                      title="Share transfer details directly via WhatsApp"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>WhatsApp Slip</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReferralModalClinic(null);
+                        setIsDeskOpen(true);
+                      }}
+                      className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-lg shadow-xs text-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      <span>Open Transfers Desk</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+
 
       {/* Main Container */}
       <div className="w-full flex flex-col gap-6">
@@ -325,20 +523,49 @@ function StockLocatorContent() {
                   {/* Actions Bar (Clear Primary & Secondary) */}
                   <div className="pt-4 mt-3 border-t border-slate-100 flex flex-col gap-2">
                     <button
-                      onClick={() => setReferralModalClinic(clinic)}
-                      className="w-full h-9 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                      onClick={() => handleOpenReferralModal(clinic)}
+                      className="w-full h-9 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98"
                       type="button"
                     >
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>Issue Emergency Referral</span>
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      <span>Request Emergency Transfer</span>
                     </button>
-                    <a
-                      href={`tel:${clinic.phone}`}
-                      className="w-full h-8 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition-colors"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Call Facility ({clinic.phone})</span>
-                    </a>
+                    <div className="grid grid-cols-2 gap-2">
+                      <a
+                        href={`tel:${clinic.phone.replace(/\s+/g, '')}`}
+                        className="h-8 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 border border-slate-200 transition-colors"
+                        title={`Call ${clinic.facilityName} (${clinic.phone})`}
+                      >
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Call Facility</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const referralText = formatEmergencyReferralText({
+                            patientName: 'Emergency Triage Patient',
+                            diagnosis: `${activeDrugObj.name} Urgent Administration`,
+                            drugNeeded: activeDrugObj.name,
+                            dosageOrQty: `2 ${clinic.unit}`,
+                            urgency: 'CRITICAL (Immediate Ambulance)',
+                            referringFacility: 'Alibag Primary Health Centre',
+                            referringDoctor: 'Dr. Rahul Sharma',
+                            referringPhone: '+91 2141 222045',
+                            receivingFacility: clinic.facilityName,
+                            receivingDoctor: clinic.doctorInCharge,
+                            receivingPhone: clinic.phone,
+                            ambulanceStatus: '108 Ambulance Dispatched',
+                          });
+                          const url = getWhatsAppShareUrl(clinic.phone, referralText);
+                          window.open(url, '_blank');
+                        }}
+                        className="h-8 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 border border-emerald-200 transition-colors"
+                        title="Send clinical referral template via WhatsApp"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>WhatsApp Slip</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -346,9 +573,17 @@ function StockLocatorContent() {
           )}
         </div>
       </div>
+
+      {/* Inter-Clinic Transfers Desk Drawer / Dialog */}
+      <TransferRequisitionsDesk
+        isOpen={isDeskOpen}
+        onClose={() => setIsDeskOpen(false)}
+        defaultTab="outgoing"
+      />
     </WorkstationShell>
   );
 }
+
 
 export default function StockLocatorPage() {
   return (

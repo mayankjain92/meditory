@@ -1,5 +1,5 @@
 import { APIGatewayProxyEventV2 } from 'aws-lambda';
-import { GetCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   TABLE_NAMES,
   STOCK_STATUS,
@@ -32,7 +32,20 @@ export async function restockHandler(event: APIGatewayProxyEventV2) {
     return badRequest('Request body is required.');
   }
 
-  let body: RestockRequest & { facilityId?: string };
+  let body: RestockRequest & {
+    facilityId?: string;
+    drugName?: string;
+    genericName?: string;
+    category?: string;
+    form?: string;
+    unit?: string;
+    threshold?: number;
+    tier?: 'EMERGENCY' | 'ESSENTIAL' | 'ROUTINE';
+    batchNumber?: string;
+    expiryDate?: string;
+    storageLocation?: string;
+    challanNumber?: string;
+  };
   try {
     body = JSON.parse(event.body);
   } catch {
@@ -66,63 +79,164 @@ export async function restockHandler(event: APIGatewayProxyEventV2) {
   );
 
   const currentItem = currentItemRes.Item;
-  if (!currentItem) {
-    return notFound(`Medicine '${drugId}' not found on shelf for clinic '${facilityId}'.`);
-  }
-
-  const previousQuantity: number = currentItem.quantity;
-  const newQuantity = previousQuantity + restockQty;
-  const newStatus = computeStockStatus(newQuantity, currentItem.threshold);
+  let previousQuantity = 0;
+  let newQuantity = restockQty;
+  let drugName = body.drugName || drugId;
+  let newStatus: StockStatus;
   const now = new Date().toISOString();
 
-  // 2. Atomic DynamoDB Update
-  await docClient.send(
-    new UpdateCommand({
-      TableName: TABLE_NAMES.INVENTORY,
-      Key: { facilityId, drugId },
-      UpdateExpression:
-        'SET quantity = quantity + :qty, updatedAt = :now, lastRestockedAt = :now, #st = :status',
-      ExpressionAttributeNames: {
-        '#st': 'status',
-      },
-      ExpressionAttributeValues: {
-        ':qty': restockQty,
-        ':now': now,
-        ':status': newStatus,
-      },
-    })
-  );
+  if (!currentItem) {
+    if (!body.drugName) {
+      return notFound(`Medicine '${drugId}' not found on shelf for clinic '${facilityId}'.`);
+    }
 
-  // 3. Write immutable audit log record
-  const auditEntry = {
-    facilityId,
-    timestamp: now,
-    action: AUDIT_ACTION.RESTOCK,
-    delta: restockQty,
-    previousQuantity,
-    newQuantity,
-    drugId,
-    drugName: currentItem.drugName,
-    workerId: session.userId,
-    workerName: session.name,
-  };
+    const threshold = typeof body.threshold === 'number' ? body.threshold : 20;
+    newStatus = computeStockStatus(newQuantity, threshold);
+    const category = body.category || 'Essential Formulary';
+    const form = body.form || 'Unit';
+    const unit = body.unit || (form.split(' ')[1] || 'units');
+    const tier = body.tier || 'ESSENTIAL';
+    const isCritical = tier === 'EMERGENCY';
 
-  await docClient.send(
-    new PutCommand({
-      TableName: TABLE_NAMES.AUDIT_LOGS,
-      Item: auditEntry,
-    })
-  );
+    const newItem = {
+      facilityId,
+      drugId,
+      drugName,
+      genericName: body.genericName || drugName,
+      category,
+      form,
+      quantity: newQuantity,
+      unit,
+      threshold,
+      tier,
+      isCritical,
+      status: newStatus,
+      batchNumber: body.batchNumber,
+      expiryDate: body.expiryDate,
+      storageLocation: body.storageLocation,
+      updatedAt: now,
+      lastRestockedAt: now,
+    };
 
-  const responsePayload: RestockResponse = {
-    success: true,
-    drugId,
-    drugName: currentItem.drugName,
-    previousQuantity,
-    newQuantity,
-    status: newStatus,
-    auditEntry,
-  };
+    const auditEntry = {
+      facilityId,
+      timestamp: now,
+      action: AUDIT_ACTION.RESTOCK,
+      delta: restockQty,
+      previousQuantity: 0,
+      newQuantity,
+      drugId,
+      drugName,
+      workerId: session.userId,
+      workerName: session.name,
+      dispensedTo: body.challanNumber
+        ? `District Medical Depot (${body.challanNumber})`
+        : 'District Medical Depot Intake',
+      batchNumber: body.batchNumber || undefined,
+    };
 
-  return successResponse(responsePayload);
+    // 2. Atomic DynamoDB Transaction for New Item + Audit Log
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: TABLE_NAMES.INVENTORY,
+              Item: newItem,
+            },
+          },
+          {
+            Put: {
+              TableName: TABLE_NAMES.AUDIT_LOGS,
+              Item: auditEntry,
+            },
+          },
+        ],
+      })
+    );
+
+    const responsePayload: RestockResponse = {
+      success: true,
+      drugId,
+      drugName,
+      previousQuantity: 0,
+      newQuantity,
+      status: newStatus,
+      auditEntry,
+    };
+
+    return successResponse(responsePayload);
+  } else {
+    previousQuantity = currentItem.quantity;
+    newQuantity = previousQuantity + restockQty;
+    drugName = currentItem.drugName;
+    newStatus = computeStockStatus(newQuantity, currentItem.threshold);
+
+    const auditEntry = {
+      facilityId,
+      timestamp: now,
+      action: AUDIT_ACTION.RESTOCK,
+      delta: restockQty,
+      previousQuantity,
+      newQuantity,
+      drugId,
+      drugName,
+      workerId: session.userId,
+      workerName: session.name,
+      dispensedTo: body.challanNumber
+        ? `District Medical Depot (${body.challanNumber})`
+        : 'District Medical Depot Intake',
+      batchNumber: body.batchNumber || undefined,
+    };
+
+    // 2. Atomic DynamoDB Transaction for Stock Increment + Audit Log
+    await docClient.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: TABLE_NAMES.INVENTORY,
+              Key: { facilityId, drugId },
+              UpdateExpression:
+                'SET quantity = quantity + :qty, updatedAt = :now, lastRestockedAt = :now, #st = :status' +
+                (body.batchNumber ? ', batchNumber = :batch' : '') +
+                (body.expiryDate ? ', expiryDate = :expiry' : '') +
+                (body.storageLocation ? ', storageLocation = :storage' : ''),
+              ExpressionAttributeNames: {
+                '#st': 'status',
+              },
+              ExpressionAttributeValues: {
+                ':qty': restockQty,
+                ':now': now,
+                ':status': newStatus,
+                ...(body.batchNumber ? { ':batch': body.batchNumber } : {}),
+                ...(body.expiryDate ? { ':expiry': body.expiryDate } : {}),
+                ...(body.storageLocation ? { ':storage': body.storageLocation } : {}),
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: TABLE_NAMES.AUDIT_LOGS,
+              Item: auditEntry,
+            },
+          },
+        ],
+      })
+    );
+
+    const responsePayload: RestockResponse = {
+      success: true,
+      drugId,
+      drugName,
+      previousQuantity,
+      newQuantity,
+      status: newStatus,
+      auditEntry,
+    };
+
+    return successResponse(responsePayload);
+  }
 }
+
+

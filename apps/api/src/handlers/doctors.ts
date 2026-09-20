@@ -3,7 +3,7 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { TABLE_NAMES, Facility, FacilityWorker } from '@meditory/shared';
 import { docClient } from '../shared/ddb.js';
 import { getAuthenticatedSession } from '../authorizer/index.js';
-import { successResponse } from '../shared/response.js';
+import { successResponse, unauthorized } from '../shared/response.js';
 
 /**
  * GET /clinic/doctors
@@ -11,7 +11,10 @@ import { successResponse } from '../shared/response.js';
  */
 export async function doctorsHandler(event: APIGatewayProxyEventV2) {
   const session = getAuthenticatedSession(event);
-  const currentFacilityId = session?.facilityId || 'PHC-ALIBAG-01';
+  if (!session) {
+    return unauthorized('Authentication required to access clinic doctors and staff directory.');
+  }
+  const currentFacilityId = session.facilityId;
 
   // 1. Fetch facilities from DB
   const facRes = await docClient.send(new ScanCommand({ TableName: TABLE_NAMES.FACILITIES }));

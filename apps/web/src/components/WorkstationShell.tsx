@@ -18,8 +18,9 @@ import {
   PackagePlus,
   ArrowLeftRight,
   PhoneCall,
+  Loader2,
 } from 'lucide-react';
-import { api, clearStoredSession } from '@/lib/api-client';
+import { api, clearStoredSession, getStoredToken } from '@/lib/api-client';
 import StockAlertSystem from '@/components/StockAlertSystem';
 import TransferRequisitionsDesk from '@/components/TransferRequisitionsDesk';
 import NetworkStatusBanner from '@/components/NetworkStatusBanner';
@@ -45,6 +46,7 @@ export default function WorkstationShell({
 
   const [workerName, setWorkerName] = useState('Dr. Rahul Sharma');
   const [facilityName, setFacilityName] = useState('Alibag Primary Health Centre (PHC)');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isTransfersOpen, setIsTransfersOpen] = useState(false);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [transferCounts, setTransferCounts] = useState({ pendingIncoming: 0, activeOutgoing: 0 });
@@ -67,6 +69,15 @@ export default function WorkstationShell({
   }, []);
 
   useEffect(() => {
+    // Auth Guard: strictly verify active session; redirect unauthenticated users to /login
+    const token = getStoredToken();
+    if (!token) {
+      clearStoredSession();
+      router.replace('/login');
+      return;
+    }
+
+    // Hydrate cached user/facility immediately if available
     try {
       const storedUser = sessionStorage.getItem('meditory_user') || localStorage.getItem('meditory_user');
       const storedFacility = sessionStorage.getItem('meditory_facility') || localStorage.getItem('meditory_facility');
@@ -81,7 +92,24 @@ export default function WorkstationShell({
     } catch {
       // fallback to pre-seeded defaults
     }
-  }, []);
+
+    api
+      .get('/api/auth/me')
+      .then((data) => {
+        if (!data?.user) {
+          clearStoredSession();
+          router.replace('/login');
+        } else {
+          if (data.user?.name) setWorkerName(data.user.name);
+          if (data.facility?.name) setFacilityName(data.facility.name);
+          setIsCheckingAuth(false);
+        }
+      })
+      .catch(() => {
+        clearStoredSession();
+        router.replace('/login');
+      });
+  }, [router]);
 
   const handleSignOut = async () => {
     try {
@@ -175,6 +203,22 @@ export default function WorkstationShell({
     }
     return pathname === item.matchPath;
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 antialiased">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center border border-teal-200">
+            <Loader2 className="w-5 h-5 text-teal-600 animate-spin" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-semibold text-slate-800">Verifying Terminal Session...</p>
+            <p className="text-xs text-slate-500">Authenticating authorized medical personnel</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 text-slate-800 antialiased min-h-screen flex selection:bg-teal-600 selection:text-white">

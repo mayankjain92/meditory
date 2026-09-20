@@ -89,62 +89,188 @@ Meditory utilizes **4 clean, domain-separated DynamoDB tables** to avoid attribu
 
 ---
 
-## 🚀 Local Development Setup
+## 🌐 Local Architecture & Port Map
+
+Meditory runs as a modular, lightweight multi-service architecture locally:
+
+| Service | Port | Local URL | Description |
+|---|---|---|---|
+| **Dispensary Web App** (`apps/web`) | `3000` | [`http://localhost:3000`](http://localhost:3000) | Next.js 14 App Router dispensary workstation, rapid desk, offline engine, and locator. |
+| **Serverless API Gateway Mock** (`apps/api`) | `3001` | [`http://localhost:3001`](http://localhost:3001) | Express/Lambda local emulator executing exact AWS Lambda handler business logic. |
+| **District Admin Portal** (`apps/admin`) | `3005` | [`http://localhost:3005`](http://localhost:3005) | Dedicated District Health Authority Gateway for clinic approvals and health grid governance. |
+| **Amazon DynamoDB Local** (Docker) | `8000` | `http://localhost:8000` | Local persistent DynamoDB container matching AWS production schemas. |
+| **DynamoDB Admin GUI** (Docker) | `8001` | [`http://localhost:8001`](http://localhost:8001) | Visual browser GUI to inspect tables, items, GSIs, and attributes in real-time. |
+
+---
+
+## 🚀 Step-by-Step Local Development Setup
 
 ### 1. Prerequisites
-- **Node.js**: `v20.x` or higher
-- **pnpm**: `npm install -g pnpm`
-- **Docker**: For running DynamoDB Local & the Admin GUI
+Ensure you have the following installed on your system:
+* **Node.js**: `v20.x` or higher (`node -v`)
+* **pnpm**: `v9.x` or higher (`npm install -g pnpm`)
+* **Docker & Docker Compose**: Running and accessible (`docker compose version`)
 
-### 2. Start Local DynamoDB & GUI
+---
+
+### 2. Clone & Install Dependencies
+Clone the repository and install all workspace dependencies across packages and apps:
 ```bash
-# Start DynamoDB Local (port 8000) and DynamoDB Admin GUI (port 8001)
-docker compose up -d
-```
-* Visual Web GUI is immediately available at: **`http://localhost:8001`**
+git clone https://github.com/mayankjain92/meditory.git
+cd meditory
 
-### 3. Seed the Database
+# Install all monorepo dependencies
+pnpm install
+```
+
+---
+
+### 3. Start Local DynamoDB & Visual Admin GUI
+Launch the local DynamoDB container and the visual web inspector:
+```bash
+# Start DynamoDB Local (8000) and DynamoDB Admin Web UI (8001) in background
+pnpm ddb:local
+# (or: docker compose up -d)
+```
+> [!TIP]
+> You can open **`http://localhost:8001`** in your browser at any time to visually inspect your DynamoDB tables, partitions, and records.
+
+---
+
+### 4. Seed the Database with Realistic Clinic Data
+Populate the database with pre-configured Raigad district clinics, doctor credentials, and shelf formularies:
 ```bash
 pnpm seed
 ```
-Seeds 3 realistic clinics in Raigad district (Alibag PHC, Vadkhal PHC, Pen CHC), 3 staff accounts, and 18 shelf inventory records.
+This seeds:
+* **3 Health Facilities**: Alibag PHC (primary node), Vadkhal PHC (low stock), and Pen CHC (surplus hub).
+* **3 Verified Clinic Workers**: Medical officers with hashed credentials.
+* **18 Formulary Shelf Items**: Including Anti-Snake Venom (ASV), Anti-Rabies Vaccines (ARV), ORS, Paracetamol, and Amoxicillin.
+* **District Admin Account**: Initialized for District Health Authority governance.
 
-### 4. Run Automated Handler Tests
+---
+
+### 5. Run the Automated Test Suite (103 Tests)
+Run the full end-to-end integration and business logic verification suite:
 ```bash
 pnpm test
 ```
-Executes the comprehensive 28-test suite verifying authentication, JWT cookies, clinic isolation, atomic 1-tap dispensing, custom batch dispensing, restocking, audit logs, and inter-clinic referral lookups.
+Executes all **103 automated tests** across 9 test groups:
+1. Clinic Worker Authentication & Session Verification
+2. Shelf Inventory Retrieval & Multi-Table Tenancy
+3. Atomic 1-Tap Dispensing & CloudWatch Metrics
+4. Tamper-Evident Audit Logging & Restocking
+5. Inter-Clinic Referral Stock Locator (Haversine distance sorting)
+6. Two-Way Handshake Inter-Clinic Requisitions (6-digit PIN verification)
+7. Offline-First Sync Engine & Idempotent Batch Sync
+8. Emergency Doctor & Clinic Phone Directory
+9. Clinic Self-Registration & District Admin 1-Tap Approval Flow
 
-### 5. Start Development Servers
+---
+
+### 6. Start the Development Servers
+
+You can start all services concurrently with a single command:
 ```bash
-# Terminal 1: Start the API backend (http://localhost:3001)
+pnpm dev
+```
+*(Runs `api` on :3001, `web` on :3000, and `admin` on :3005 concurrently).*
+
+#### Alternatively, run services in separate terminals:
+```bash
+# Terminal 1: Start API Gateway & Lambda Handler Service (:3001)
 pnpm dev:api
 
-# Terminal 2: Start the Next.js frontend (http://localhost:3000)
-pnpm dev
+# Terminal 2: Start Next.js Primary Clinic Workstation (:3000)
+pnpm dev:web
+
+# Terminal 3: Start District Health Authority Admin Portal (:3005)
+pnpm dev:admin
 ```
 
 ---
 
-## 👥 Pre-Seeded Staff Accounts (For Demo & Testing)
+## 👥 Pre-Seeded Accounts & Roles
 
-| Health Facility | Facility Type | Staff Email | Password | Demo Scenario |
+### 1. Primary Clinic Workers (Sign-in at [`http://localhost:3000/login`](http://localhost:3000/login))
+
+| Clinic / Health Facility | Facility Type | Staff Email | Password | Role | Demo Test Scenario |
+|---|---|---|---|---|---|
+| **Alibag PHC** | Primary Health Centre | `rahul.sharma@phc-alibag.in` | `Password@123` | `facility_worker` | **Zero ASV Stock**: 1-tap dispense, stockout alarm, and emergency referral trigger to Pen CHC. |
+| **Vadkhal PHC** | Primary Health Centre | `priya.deshmukh@phc-vadkhal.in` | `Password@123` | `facility_worker` | **Low Stock**: 2 vials remaining; demonstrates safety threshold indicators. |
+| **Pen CHC** | Community Health Centre | `amit.patil@chc-pen.in` | `Password@123` | `facility_worker` | **Surplus ASV Hub**: 25 vials in stock; receives inter-clinic transfer requisitions. |
+
+### 2. District Health Authority (Sign-in at [`http://localhost:3005`](http://localhost:3005))
+
+| Role | Portal URL | Official Email | Password | Permissions |
 |---|---|---|---|---|
-| **Alibag PHC** | Primary Health Centre | `rahul.sharma@phc-alibag.in` | `Password@123` | Demonstrates **0 stock of Anti-Snake Venom (ASV)** $\rightarrow$ triggers emergency referral to Pen CHC. |
-| **Vadkhal PHC** | Primary Health Centre | `priya.deshmukh@phc-vadkhal.in` | `Password@123` | Demonstrates **Low Stock (2 vials remaining)** $\rightarrow$ triggers CloudWatch alarm threshold. |
-| **Pen CHC** | Community Health Centre | `amit.patil@chc-pen.in` | `Password@123` | Demonstrates **Surplus stock (25 vials ASV)** $\rightarrow$ acts as destination clinic for emergency patient transfers. |
+| **District Health Admin** | `http://localhost:3005` | `admin@meditory.gov.in` | `Password@123` | Review pending clinic registrations, 1-tap approvals, auto-seed formularies, state audit oversight. |
 
 ---
 
-## 🛠️ CLI Utilities
+## 🧪 Testing Key Scenarios Locally
+
+### Scenario 1: 1-Tap Emergency Dispense & Offline Mode
+1. Navigate to `http://localhost:3000/login` and log in as `rahul.sharma@phc-alibag.in` / `Password@123`.
+2. You will land on the **Rapid Desk**.
+3. Locate **Paracetamol 500mg** or **Anti-Rabies Vaccine** and click **"-1 Quick Dispense"**.
+4. Notice the real-time stock decrement, badge update, and instantaneous audit trail entry under `/audit`.
+5. Toggle your browser DevTools to **Offline** (Network tab) and perform dispensations. Observe the offline banner and queue counter. Toggle back to **Online** to see automatic, idempotent batch synchronization.
+
+### Scenario 2: Emergency Inter-Clinic Stock Referral & WhatsApp Dispatch
+1. On Alibag PHC's Rapid Desk, notice **Anti-Snake Venom (ASV)** is at **0 vials (CRITICAL STOCKOUT)**.
+2. Click **"Locate Nearest Stock"** or navigate to the **Stock Locator** (`/locator?drug=DRUG-ASV-01`).
+3. The locator queries the district via DynamoDB Global Secondary Index and ranks clinics by real-time distance:
+   * **Pen Community Health Centre** (25 vials available, 14.8 km distance, cold-chain verified at 3.8°C).
+4. Click **"Direct Call MOIC"** to view doctor contact details, or click **"WhatsApp Referral"** to preview a pre-formatted emergency dispatch text containing clinic coordinates and patient instructions.
+
+### Scenario 3: Two-Way Handshake Inter-Clinic Transfer
+1. From the Stock Locator, click **"Request Stock Transfer"** to request 2 vials of ASV from Pen CHC.
+2. Log out and sign into Pen CHC (`amit.patil@chc-pen.in` / `Password@123`).
+3. Open the **Transfer Requisitions Desk** from the sidebar. You will see Alibag's incoming transfer request.
+4. Click **"Approve Transfer"**. A **6-digit secure Handshake PIN** is generated.
+5. Click **"Dispense with PIN"** to release the stock into transit, automatically decrementing Pen CHC's inventory atomically.
+
+### Scenario 4: Self-Registration & District Admin 1-Tap Approval
+1. Visit `http://localhost:3000/register` and submit a new rural clinic application (e.g. Roha Primary Health Centre).
+2. Visit the District Admin Portal at `http://localhost:3005` and log in as `admin@meditory.gov.in` / `Password@123`.
+3. Locate the pending application in the queue and review the doctor credentials and facility GPS coordinates.
+4. Click **"Approve Clinic & Provision Stock"**.
+5. The clinic is instantly activated, a starter emergency formulary is seeded into DynamoDB, and the doctor can immediately sign into the Rapid Desk.
+
+---
+
+## 🔒 Security & Route Protection
+
+All internal workstation routes (`/rapid-desk`, `/locator`, `/audit`, `/admin`) are strictly protected:
+* **Next.js Edge Middleware** (`apps/web/src/middleware.ts`) intercepts all unauthenticated page requests and redirects them to `/login`.
+* **Client-Side Auth Guards** in `WorkstationShell` verify the session against `/api/auth/me` and prevent protected UI flash.
+* **Serverless Scope Authorizer** (`enforceClinicScope`) prevents authenticated staff from mutating data belonging to other clinics.
+
+---
+
+## 🛠️ CLI Utilities & Commands
 
 ```bash
+# Start all services concurrently
+pnpm dev
+
 # Inspect all 4 DynamoDB tables in formatted terminal tables
 pnpm inspect
+
+# Re-run full 103-test suite
+pnpm test
+
+# Reset and re-seed the local DynamoDB database
+pnpm clean:db && pnpm seed
+
+# Stop the local DynamoDB container
+pnpm ddb:stop
 
 # Synthesize AWS CDK CloudFormation templates
 pnpm cdk:synth
 
-# Deploy full stack to AWS
+# Deploy full stack to AWS Cloud
 pnpm cdk:deploy
 ```
+

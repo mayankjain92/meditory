@@ -17,6 +17,8 @@ export interface Facility {
   createdAt: string;
 }
 
+export type UserRole = 'facility_worker' | 'admin';
+
 /**
  * Facility Healthcare Worker / Staff Record
  */
@@ -25,7 +27,7 @@ export interface FacilityWorker {
   facilityId: string;      // Scoped clinic ID
   name: string;            // e.g. "Dr. Ramesh Patil" / "Sunita Shinde"
   email: string;           // Work email (unique username for login)
-  role: 'facility_worker'; // Single authenticated role
+  role: UserRole;          // Authenticated role: 'facility_worker' or 'admin'
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
   lastLoginAt?: string;
@@ -68,6 +70,9 @@ export interface InventoryItem {
   tier: DrugTier;
   isCritical: boolean;
   status: StockStatus;     // IN_STOCK | LOW_STOCK | OUT_OF_STOCK
+  batchNumber?: string;
+  expiryDate?: string;
+  storageLocation?: string;
   lastDispensedAt?: string;
   lastRestockedAt?: string;
   updatedAt: string;
@@ -102,7 +107,7 @@ export interface JWTPayload {
   facilityName: string;
   name: string;
   email: string;
-  role: 'facility_worker';
+  role: UserRole;
   iat?: number;
   exp?: number;
 }

@@ -16,8 +16,6 @@ import {
 } from 'lucide-react';
 import {
   isOfflineMode,
-  setSimulatedOffline,
-  getSimulatedOffline,
   getPendingCount,
   getQueuedActions,
   syncPendingActions,
@@ -28,7 +26,6 @@ import {
 
 export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete?: () => void }) {
   const [isOffline, setIsOffline] = useState(false);
-  const [isSimulated, setIsSimulated] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -42,28 +39,15 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
   };
 
   useEffect(() => {
-    setIsSimulated(getSimulatedOffline());
     const unsubscribe = subscribeToSync((state) => {
       setIsOffline(state.isOffline);
       setPendingCount(state.pendingCount);
       setIsSyncing(state.isSyncing);
       setLastSync(state.lastSyncAt);
-      setIsSimulated(getSimulatedOffline());
     });
 
     return () => unsubscribe();
   }, []);
-
-  const handleToggleSimulatedOffline = () => {
-    const nextVal = !isSimulated;
-    setSimulatedOffline(nextVal);
-    setIsSimulated(nextVal);
-    showToast(
-      nextVal
-        ? 'Offline simulation enabled. Actions will be queued in IndexedDB.'
-        : 'Reconnected to network. Ready to sync.'
-    );
-  };
 
   const handleSyncClick = async () => {
     if (isOffline) {
@@ -116,7 +100,7 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
               ? 'bg-amber-50 border-amber-200 text-amber-900'
               : 'bg-emerald-50 border-emerald-200 text-emerald-800'
           }`}
-          title="Click to view IndexedDB offline action queue"
+          title="Click to view pending offline actions"
         >
           {isOffline ? (
             <WifiOff className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
@@ -126,9 +110,7 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
 
           <span>
             {isOffline
-              ? isSimulated
-                ? 'Simulated Offline'
-                : 'Offline'
+              ? 'Offline'
               : pendingCount > 0
               ? 'Online'
               : 'Online • Synced'}
@@ -140,7 +122,7 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
                 isOffline ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-600 text-white'
               }`}
             >
-              {pendingCount} {pendingCount === 1 ? 'queued' : 'queued'}
+              {pendingCount} queued
             </span>
           )}
         </div>
@@ -166,20 +148,6 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
           <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-white' : ''}`} />
           <span>{isSyncing ? 'Syncing...' : '⚡ Sync Now'}</span>
         </button>
-
-        {/* Offline Simulation Toggle for Demo */}
-        <button
-          type="button"
-          onClick={handleToggleSimulatedOffline}
-          className={`text-[10px] font-semibold px-2 py-1 rounded border transition-colors ${
-            isSimulated
-              ? 'bg-rose-700 text-white border-rose-800'
-              : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
-          }`}
-          title="Toggle simulated offline mode to test dispensing when internet is down"
-        >
-          {isSimulated ? 'Exit Offline' : 'Test Offline'}
-        </button>
       </div>
 
       {/* Floating Offline Queue Drawer / Modal */}
@@ -190,8 +158,8 @@ export default function NetworkStatusBanner({ onSyncComplete }: { onSyncComplete
               <div className="flex items-center gap-2">
                 <Database className="w-5 h-5 text-teal-400" />
                 <div>
-                  <h3 className="font-bold text-sm">IndexedDB Offline Action Queue</h3>
-                  <p className="text-[10px] text-slate-400">Local browser storage for zero-connectivity shifts</p>
+                  <h3 className="font-bold text-sm">Offline Action Queue</h3>
+                  <p className="text-[10px] text-slate-400">Local emergency storage for offline dispensary shifts</p>
                 </div>
               </div>
               <button

@@ -3,11 +3,309 @@ import { URL } from 'url';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
 const BACKEND_API = process.env.BACKEND_API_URL || 'http://localhost:3001';
+const ADMIN_COOKIE_NAME = 'meditory_admin_session';
+
+/**
+ * Extracts the admin JWT token from incoming request headers or cookies.
+ */
+function extractAdminToken(req: http.IncomingMessage): string | null {
+  // 1. Authorization header: Bearer <token>
+  const authHeader = req.headers['authorization'];
+  if (authHeader) {
+    const match = authHeader.match(/^bearer\s+(.+)$/i);
+    if (match && match[1]) return match[1].trim();
+    if (!authHeader.includes(' ')) return authHeader.trim();
+  }
+
+  // 2. Cookie header: meditory_admin_session=<token>
+  const rawCookie = req.headers['cookie'];
+  if (rawCookie) {
+    const parts = rawCookie.split(';');
+    for (const part of parts) {
+      const [k, v] = part.trim().split('=');
+      if (k === ADMIN_COOKIE_NAME && v) {
+        return decodeURIComponent(v);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Modern HTML Template for District Health Authority Admin Login Screen
+ */
+function renderAdminLoginHtml(errorMessage?: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In | Meditory District Health Authority</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #00382d;
+      --primary-accent: #006a56;
+      --primary-light: #e6f4f0;
+      --surface: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --danger: #b91c1c;
+      --danger-bg: #fef2f2;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #e6f4f0 0%, #f8fafc 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .login-container {
+      max-width: 460px;
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 2.5rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 56, 45, 0.08), 0 8px 10px -6px rgba(0, 56, 45, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+    }
+    .emblem-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--primary-light);
+      color: var(--primary-accent);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 1px solid #bfe3da;
+    }
+    .header-box {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .header-box h1 {
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .header-box p {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+    }
+    .form-group input {
+      padding: 0.75rem 0.95rem;
+      border: 1.5px solid var(--border);
+      border-radius: 0.6rem;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    .form-group input:focus {
+      border-color: var(--primary-accent);
+      box-shadow: 0 0 0 3px rgba(0, 106, 86, 0.15);
+    }
+    .btn-submit {
+      background: var(--primary-accent);
+      color: #ffffff;
+      border: none;
+      font-size: 0.88rem;
+      font-weight: 700;
+      padding: 0.85rem 1.25rem;
+      border-radius: 0.6rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: background 0.15s ease;
+      box-shadow: 0 4px 6px -1px rgba(0, 106, 86, 0.2);
+    }
+    .btn-submit:hover { background: var(--primary); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .demo-box {
+      background: #f8fafc;
+      border: 1px dashed var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .demo-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .btn-demo {
+      background: #ffffff;
+      color: var(--primary-accent);
+      border: 1px solid #bfe3da;
+      padding: 0.5rem 0.85rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.15s ease;
+    }
+    .btn-demo:hover { background: var(--primary-light); }
+    .alert-error {
+      background: var(--danger-bg);
+      border: 1px solid #fecaca;
+      color: var(--danger);
+      font-size: 0.78rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      display: ${errorMessage ? 'block' : 'none'};
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 1.5rem;
+    }
+    .footer-note a {
+      color: var(--primary-accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="header-box">
+      <span class="emblem-badge">🏛️ District Health Authority</span>
+      <h1>State Health Mission Admin Portal</h1>
+      <p>Authorized access for District Civil Surgeons, Licensing Officers, and State Formulary Administrators.</p>
+    </div>
+
+    <div id="alertBox" class="alert-error">${errorMessage || ''}</div>
+
+    <form id="loginForm" onsubmit="handleLogin(event)" style="display: flex; flex-direction: column; gap: 1.15rem;">
+      <div class="form-group">
+        <label for="email">Health Officer Official Email</label>
+        <input type="email" id="email" required placeholder="admin@meditory.gov.in" value="admin@meditory.gov.in" autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Authority Password</label>
+        <input type="password" id="password" required placeholder="••••••••••••" value="Password@123" autocomplete="current-password">
+      </div>
+
+      <button type="submit" id="submitBtn" class="btn-submit">
+        <span>Sign In to Governance Console</span>
+        <span>→</span>
+      </button>
+    </form>
+
+    <div class="demo-box">
+      <span class="demo-title">⚡ Hackathon Evaluation Quick Credentials</span>
+      <button type="button" onclick="prefillAdmin()" class="btn-demo">
+        <span>Civil Surgeon Admin (admin@meditory.gov.in)</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--primary);">Password@123</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Need dispensary workstation instead? <a href="http://localhost:3000/login">Open Clinic Terminal (:3000) ↗</a>
+  </div>
+
+  <script>
+    function prefillAdmin() {
+      document.getElementById('email').value = 'admin@meditory.gov.in';
+      document.getElementById('password').value = 'Password@123';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const alertBox = document.getElementById('alertBox');
+      const submitBtn = document.getElementById('submitBtn');
+
+      alertBox.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Authenticating Health Authority...';
+
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          // Redirect to governance dashboard
+          window.location.href = '/dashboard';
+        } else {
+          alertBox.textContent = data.message || data.error || 'Authentication failed. Please verify credentials.';
+          alertBox.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span>Sign In to Governance Console</span><span>→</span>';
+        }
+      } catch (err) {
+        alertBox.textContent = 'Failed to communicate with Admin server. Please try again.';
+        alertBox.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>Sign In to Governance Console</span><span>→</span>';
+      }
+    }
+  </script>
+</body>
+</html>`;
+}
 
 /**
  * Modern HTML Template for District Health Authority Admin Dashboard
  */
-function renderAdminDashboardHtml(): string {
+function renderAdminDashboardHtml(adminName?: string, adminEmail?: string): string {
+  const displayName = adminName || 'Dr. State Health Mission Admin';
+  const displayEmail = adminEmail || 'admin@meditory.gov.in';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,16 +359,6 @@ function renderAdminDashboardHtml(): string {
       align-items: center;
       gap: 0.85rem;
     }
-    .badge-port {
-      background: #0f172a;
-      color: #38bdf8;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 0.25rem 0.6rem;
-      border-radius: 9999px;
-      letter-spacing: 0.02em;
-    }
     .badge-admin {
       background: var(--primary-light);
       color: var(--primary-accent);
@@ -80,6 +368,38 @@ function renderAdminDashboardHtml(): string {
       border-radius: 9999px;
       border: 1px solid #bfe3da;
       text-transform: uppercase;
+    }
+    .officer-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #f1f5f9;
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.78rem;
+    }
+    .officer-name {
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .officer-role {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+    .btn-signout {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      color: var(--danger);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.45rem 0.85rem;
+      border-radius: 0.45rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-signout:hover {
+      background: var(--danger-bg);
+      border-color: #fca5a5;
     }
     .container {
       max-width: 1240px;
@@ -352,18 +672,27 @@ function renderAdminDashboardHtml(): string {
   <header class="header">
     <div class="brand">
       <div style="font-weight: 800; font-size: 1.15rem; color: var(--primary); letter-spacing: -0.02em;">
-        🏛️ MEDITORY <span style="font-weight: 500; color: var(--text-muted); font-size: 0.95rem;">• State & District Health Authority</span>
+        🏛️ MEDITORY <span style="font-weight: 500; color: var(--text-muted); font-size: 0.95rem;">• District Health Authority</span>
       </div>
-      <span class="badge-port">PORT :3005</span>
-      <span class="badge-admin">District Admin Server</span>
+      <span class="badge-admin">Governance Active</span>
     </div>
 
     <div style="display: flex; align-items: center; gap: 0.85rem;">
+      <div class="officer-badge">
+        <span>👨‍⚕️</span>
+        <div style="text-align: left;">
+          <div class="officer-name">${displayName}</div>
+          <div class="officer-role">${displayEmail} • DHA Officer</div>
+        </div>
+      </div>
       <button onclick="loadRegistrations()" class="btn-action secondary">
-        🔄 Refresh Data
+        🔄 Refresh
+      </button>
+      <button onclick="signOutAdmin()" class="btn-signout" title="Sign out of District Health Authority console">
+        Sign Out 🚪
       </button>
       <a href="http://localhost:3000/login" target="_blank" class="btn-action">
-        🏥 Open Dispensary Workstation (:3000) ↗
+        🏥 Dispensary Portal ↗
       </a>
     </div>
   </header>
@@ -373,12 +702,12 @@ function renderAdminDashboardHtml(): string {
       <div style="display: inline-flex; align-items: center; gap: 0.5rem;">
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 9999px; background: #22c55e;"></span>
         <span style="font-size: 0.75rem; font-weight: 700; color: #15803d; text-transform: uppercase;">
-          District Health Grid Governance Active • Raigad District
+          District Health Grid Governance Active • Raigad District Civil Surgeon
         </span>
       </div>
-      <h1>Clinic Registration & Licensing Authority</h1>
+      <h1>Clinic Licensing & Formulary Authorization Authority</h1>
       <p>
-        Review applications from rural Primary Health Centres (PHC), Community Health Centres (CHC), and sub-dispensaries. Approving an application activates staff login and automatically provisions the starter emergency drug formulary.
+        Review applications from rural Primary Health Centres (PHC), Community Health Centres (CHC), and sub-dispensaries. Approving an application formally grants their medical practice license, activates staff login credentials, and provisions the emergency formulary.
       </p>
     </div>
 
@@ -434,9 +763,20 @@ function renderAdminDashboardHtml(): string {
       setTimeout(() => { toast.style.display = 'none'; }, 4000);
     }
 
+    async function signOutAdmin() {
+      try {
+        await fetch('/api/admin/logout', { method: 'POST' });
+      } catch (e) {}
+      window.location.href = '/login';
+    }
+
     async function loadRegistrations() {
       try {
         const res = await fetch('/api/admin/registrations');
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/login';
+          return;
+        }
         const data = await res.json();
         allFacilities = data.facilities || [];
         
@@ -556,7 +896,7 @@ function renderAdminDashboardHtml(): string {
           body: JSON.stringify({
             facilityId,
             remarks: 'Verified by Raigad District Civil Surgeon',
-            approvedBy: 'Dr. State Health Mission Admin'
+            approvedBy: '${displayName}'
           })
         });
         const data = await res.json();
@@ -580,7 +920,11 @@ function renderAdminDashboardHtml(): string {
         const res = await fetch('/api/admin/reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ facilityId, rejectionReason: reason })
+          body: JSON.stringify({
+            facilityId,
+            rejectionReason: reason,
+            rejectedBy: '${displayName}'
+          })
         });
         const data = await res.json();
         if (data.success) {
@@ -601,6 +945,29 @@ function renderAdminDashboardHtml(): string {
   </script>
 </body>
 </html>`;
+}
+
+/**
+ * Validates the admin session against backend or cached token
+ */
+async function verifyAdminSession(token: string | null): Promise<{ valid: boolean; user?: any }> {
+  if (!token) return { valid: false };
+  try {
+    const res = await fetch(`${BACKEND_API}/auth/me`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) return { valid: false };
+    const data: any = await res.json();
+    if (data?.user?.role === 'admin') {
+      return { valid: true, user: data.user };
+    }
+    return { valid: false };
+  } catch {
+    return { valid: false };
+  }
 }
 
 /**
@@ -627,11 +994,112 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // =========================================================================
+  // Authentication API Endpoints
+  // =========================================================================
+
+  // POST /api/admin/login
+  if (req.method === 'POST' && url.pathname === '/api/admin/login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const backendRes = await fetch(`${BACKEND_API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+        const data: any = await backendRes.json();
+
+        if (!backendRes.ok) {
+          res.writeHead(backendRes.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(data));
+          return;
+        }
+
+        // Enforce RBAC: Caller MUST have 'admin' role
+        if (data.user?.role !== 'admin') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: 'FORBIDDEN',
+            message: 'Access Denied: This portal is strictly restricted to District Health Authority Administrators. Clinic staff should access the dispensary terminal at :3000.',
+          }));
+          return;
+        }
+
+        // Set HttpOnly Admin Session Cookie
+        const isSecure = process.env.NODE_ENV === 'production' ? 'Secure; ' : '';
+        const cookieHeader = `${ADMIN_COOKIE_NAME}=${data.token}; Path=/; ${isSecure}HttpOnly; SameSite=Lax; Max-Age=86400`;
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Set-Cookie': cookieHeader,
+        });
+        res.end(JSON.stringify({
+          success: true,
+          token: data.token,
+          user: data.user,
+          facility: data.facility,
+        }));
+      } catch (err: any) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'BAD_GATEWAY', message: err?.message || 'Failed to communicate with authentication service.' }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/admin/logout
+  if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
+    const clearCookie = `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': clearCookie,
+    });
+    res.end(JSON.stringify({ success: true, message: 'Admin logged out successfully.' }));
+    return;
+  }
+
+  // GET /api/admin/me
+  if (req.method === 'GET' && url.pathname === '/api/admin/me') {
+    const token = extractAdminToken(req);
+    if (!token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'No active administrator session.' }));
+      return;
+    }
+    const session = await verifyAdminSession(token);
+    if (!session.valid) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Session expired or invalid.' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ user: session.user }));
+    return;
+  }
+
+  // =========================================================================
+  // Protected API Proxies (Enforce Bearer token forwarding)
+  // =========================================================================
+
+  const adminToken = extractAdminToken(req);
+
   // API Proxy: GET /api/admin/registrations
   if (req.method === 'GET' && url.pathname === '/api/admin/registrations') {
+    if (!adminToken) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Authentication required. Please sign in as District Health Authority.' }));
+      return;
+    }
+
     try {
-      const backendRes = await fetch(`${BACKEND_API}/admin/registrations`);
-      const data = await backendRes.json();
+      const backendRes = await fetch(`${BACKEND_API}/admin/registrations`, {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+        },
+      });
+      const data: any = await backendRes.json();
       res.writeHead(backendRes.status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     } catch (err: any) {
@@ -643,16 +1111,25 @@ const server = http.createServer(async (req, res) => {
 
   // API Proxy: POST /api/admin/approve
   if (req.method === 'POST' && url.pathname === '/api/admin/approve') {
+    if (!adminToken) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Authentication required.' }));
+      return;
+    }
+
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
         const backendRes = await fetch(`${BACKEND_API}/admin/registrations/approve`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`,
+          },
           body,
         });
-        const data = await backendRes.json();
+        const data: any = await backendRes.json();
         res.writeHead(backendRes.status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
       } catch (err: any) {
@@ -665,16 +1142,25 @@ const server = http.createServer(async (req, res) => {
 
   // API Proxy: POST /api/admin/reject
   if (req.method === 'POST' && url.pathname === '/api/admin/reject') {
+    if (!adminToken) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Authentication required.' }));
+      return;
+    }
+
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
         const backendRes = await fetch(`${BACKEND_API}/admin/registrations/reject`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`,
+          },
           body,
         });
-        const data = await backendRes.json();
+        const data: any = await backendRes.json();
         res.writeHead(backendRes.status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(data));
       } catch (err: any) {
@@ -685,9 +1171,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Serve Main Dashboard UI
+  // =========================================================================
+  // HTML UI Routes
+  // =========================================================================
+
+  // Serve Admin Login Page explicitly
+  if (req.method === 'GET' && url.pathname === '/login') {
+    const html = renderAdminLoginHtml();
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // Serve Main Dashboard or Redirect to Login
   if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/' || url.pathname === '/admin' || url.pathname === '/dashboard')) {
-    const html = renderAdminDashboardHtml();
+    const session = await verifyAdminSession(adminToken);
+
+    if (!session.valid) {
+      // Not logged in -> Render login page
+      const html = renderAdminLoginHtml();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+      return;
+    }
+
+    // Authenticated admin -> Render dashboard
+    const html = renderAdminDashboardHtml(session.user?.name, session.user?.email);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     if (req.method === 'HEAD') {
       res.end();
@@ -716,7 +1225,7 @@ server.on('error', (err: NodeJS.ErrnoException) => {
 server.listen(PORT, () => {
   console.log(`\n========================================================================`);
   console.log(`🏛️ [Meditory Admin Server] District Health Authority Active on Port ${PORT}`);
-  console.log(`👉 Admin Dashboard URL: http://localhost:${PORT}`);
-  console.log(`👉 Backend Proxy URL:   ${BACKEND_API}`);
+  console.log(`👉 Admin Sign-in & Dashboard URL: http://localhost:${PORT}`);
+  console.log(`👉 Backend Proxy URL:            ${BACKEND_API}`);
   console.log(`========================================================================\n`);
 });

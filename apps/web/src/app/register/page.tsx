@@ -190,7 +190,6 @@ export default function RegisterClinicPage() {
           >
             <ShieldCheck className="w-4 h-4 text-primary" />
             <span>District Admin Portal</span>
-            <span className="text-[10px] text-slate-500 font-mono">:3005</span>
             <ExternalLink className="w-3 h-3 text-slate-400" />
           </a>
         </div>
@@ -288,7 +287,7 @@ export default function RegisterClinicPage() {
                 className="w-full sm:w-auto h-11 px-6 rounded-lg bg-primary-container text-white text-xs font-bold flex items-center justify-center gap-2 hover:bg-primary transition-all shadow-sm"
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span>Open Admin Portal to Approve (:3005)</span>
+                <span>Open District Admin Portal to Approve</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
               <button

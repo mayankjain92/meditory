@@ -8,12 +8,22 @@ export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
   try {
     const sToken = sessionStorage.getItem('meditory_token');
-    if (sToken && sToken.trim()) return sToken.trim();
+    if (sToken && sToken.trim()) {
+      if (sToken.trim() === 'emergency_override_token') {
+        sessionStorage.removeItem('meditory_token');
+      } else {
+        return sToken.trim();
+      }
+    }
     const lToken = localStorage.getItem('meditory_token');
     if (lToken && lToken.trim()) {
-      // Re-hydrate sessionStorage for consistency
-      sessionStorage.setItem('meditory_token', lToken.trim());
-      return lToken.trim();
+      if (lToken.trim() === 'emergency_override_token') {
+        localStorage.removeItem('meditory_token');
+      } else {
+        // Re-hydrate sessionStorage for consistency
+        sessionStorage.setItem('meditory_token', lToken.trim());
+        return lToken.trim();
+      }
     }
   } catch {
     // Storage access restricted in some iframes/modes
@@ -24,9 +34,10 @@ export function getStoredToken(): string | null {
 export function setStoredSession(token: string, user?: any, facility?: any) {
   if (typeof window === 'undefined') return;
   try {
-    if (token) {
+    if (token && token !== 'emergency_override_token') {
       sessionStorage.setItem('meditory_token', token);
       localStorage.setItem('meditory_token', token);
+      document.cookie = `meditory_session=${encodeURIComponent(token)}; path=/; max-age=86400; SameSite=Lax`;
     }
     if (user) {
       const uStr = JSON.stringify(user);
@@ -52,6 +63,7 @@ export function clearStoredSession() {
     localStorage.removeItem('meditory_token');
     localStorage.removeItem('meditory_user');
     localStorage.removeItem('meditory_facility');
+    document.cookie = 'meditory_session=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
   } catch {
     // ignore
   }
@@ -60,14 +72,13 @@ export function clearStoredSession() {
 let sessionRestorationPromise: Promise<string | null> | null = null;
 
 /**
- * Automatically establishes or refreshes an authenticated session for the terminal.
- * Fallback to default pre-seeded clinic terminal (Alibag PHC) if no stored session is available.
+ * Automatically checks and refreshes an authenticated session for the terminal.
  */
 export async function ensureTerminalSession(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
 
   const existing = getStoredToken();
-  if (existing && existing !== 'emergency_override_token') {
+  if (existing) {
     return existing;
   }
 

@@ -11,18 +11,14 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  Radio,
   ArrowRight,
   AlertTriangle,
   Lock,
-  Wifi,
   Phone,
-  Headphones,
   ThermometerSnowflake,
   Loader2,
   Check,
   HeartPulse,
-  PlusCircle,
 } from 'lucide-react';
 
 import { api, setStoredSession } from '@/lib/api-client';
@@ -83,29 +79,10 @@ export default function LoginPage() {
     }
   };
 
-  const triggerEmergencyProtocol = () => {
-    setStoredSession(
-      'emergency_override_token',
-      {
-        id: 'USR-EMERGENCY',
-        name: 'Emergency Duty Officer',
-        role: 'facility_worker',
-        facilityId: 'PHC-ALIBAG-01',
-      },
-      {
-        id: 'PHC-ALIBAG-01',
-        name: 'Alibag Primary Health Centre',
-      }
-    );
-    router.push('/rapid-desk?mode=emergency');
-  };
 
-  const openTerminalTicket = () => {
-    showToast('📡 Rural Health IT Dispatch: Terminal diagnostic beacon transmitted.');
-  };
 
   return (
-    <MedicalBackground showToggle={true}>
+    <MedicalBackground>
       {/* Floating Toast Notification */}
       {feedbackToast && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs px-4 py-2.5 rounded-lg shadow-xl border border-teal-500/30 flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
@@ -144,28 +121,11 @@ export default function LoginPage() {
             target="_blank"
             rel="noreferrer"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-slate-200 text-xs text-on-surface hover:bg-slate-50 transition-all shadow-xs"
-            title="District Health Authority Registration Approval Portal (Port 3005)"
+            title="District Health Authority Registration Approval Portal"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-primary" />
             <span className="font-semibold text-[11px]">District Admin Portal</span>
-            <span className="text-[10px] text-primary-container font-mono font-bold">:3005</span>
           </a>
-
-          {/* Real-time Sync Status Badge */}
-          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded bg-surface-container-lowest shadow-sm border border-slate-200/70">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
-            </span>
-            <div className="text-left leading-tight">
-              <span className="text-[11px] font-semibold text-on-surface block">
-                Sync Server: Operational
-              </span>
-              <span className="text-[10px] text-on-surface-variant block">
-                Local Offline Cache Active (v4.2.1)
-              </span>
-            </div>
-          </div>
 
           {/* Multilingual Selector */}
           <div className="flex items-center bg-surface-container-high rounded p-0.5 shadow-sm border border-slate-200/50">
@@ -359,7 +319,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Auxiliary Checkbox & Scanner Live Status */}
+              {/* Auxiliary Checkbox */}
               <div className="flex items-center justify-between pt-1">
                 <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                   <input
@@ -372,9 +332,6 @@ export default function LoginPage() {
                     Remember this terminal for 12h shift
                   </span>
                 </label>
-                <span className="text-[11px] text-secondary flex items-center gap-1 font-semibold">
-                  <Radio className="w-3.5 h-3.5 animate-pulse" /> Scanner Live
-                </span>
               </div>
 
               {/* Primary Submit Button */}
@@ -409,30 +366,7 @@ export default function LoginPage() {
               </div>
             </form>
 
-            {/* 3. Emergency Override Protocol (Anti-Venom / Trauma bypass) */}
-            <div className="rounded-lg bg-tertiary/10 p-3.5 space-y-2 border border-tertiary/20">
-              <div className="flex items-start gap-2.5">
-                <AlertTriangle className="w-5 h-5 text-tertiary shrink-0 mt-0.5" />
-                <div className="text-left">
-                  <div className="text-xs font-bold text-tertiary tracking-tight">
-                    CRITICAL STOCK EMERGENCY?
-                  </div>
-                  <p className="text-xs text-on-surface mt-0.5 leading-snug">
-                    Access Urgent Anti-Venom, ARV, & Trauma Drug Protocol without signing in.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={triggerEmergencyProtocol}
-                  className="h-8 px-3 rounded bg-tertiary hover:bg-tertiary-dark text-on-tertiary text-[11px] flex items-center gap-1.5 font-bold shadow-sm transition-colors"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  <span>Open Emergency Dispense</span>
-                </button>
-              </div>
-            </div>
+
 
             {/* Security Disclaimer */}
             <div className="text-center pt-2">
@@ -448,17 +382,6 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
-
-          {/* Card Footer Bar: Station Telemetry */}
-          <div className="bg-surface-container px-6 py-2.5 flex items-center justify-between text-on-surface-variant text-xs border-t border-slate-200/50">
-            <span className="flex items-center gap-1.5">
-              <Wifi className="w-3.5 h-3.5 text-secondary" />
-              <span className="text-[11px]">Online Telemetry</span>
-            </span>
-            <span className="font-mono text-[11px] text-on-surface-variant">
-              IP: 10.42.88.194 [STATIC-PHC]
-            </span>
-          </div>
         </div>
       </div>
 
@@ -472,17 +395,9 @@ export default function LoginPage() {
           >
             <Phone className="w-3.5 h-3.5" /> Dial 1800-MED-HELP (Toll Free)
           </a>
-          <span className="text-outline-variant hidden sm:inline">•</span>
-          <button
-            onClick={openTerminalTicket}
-            className="flex items-center gap-1 hover:text-on-surface transition-colors"
-            type="button"
-          >
-            <Headphones className="w-3.5 h-3.5" /> Raise Terminal Ticket
-          </button>
         </div>
 
-        {/* Cold-Chain & National Health Stack Indicators */}
+        {/* Cold-Chain Indicators */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <ThermometerSnowflake className="w-4 h-4 text-secondary" />
@@ -491,8 +406,6 @@ export default function LoginPage() {
               <strong className="text-on-surface font-semibold font-mono">3.8°C (Normal)</strong>
             </span>
           </div>
-          <span className="text-outline-variant hidden sm:inline">•</span>
-          <span>National Health Stack v4.2</span>
         </div>
       </footer>
     </MedicalBackground>

@@ -56,9 +56,40 @@ export function getAuthenticatedSession(event: {
  * Throws an error with 403 status if targetFacilityId doesn't match session.facilityId.
  */
 export function enforceClinicScope(session: JWTPayload, targetFacilityId?: string): void {
+  // Administrators have district-wide purview across all facilities
+  if (session.role === 'admin') {
+    return;
+  }
   if (targetFacilityId && targetFacilityId !== session.facilityId) {
     const err = new Error(`Access forbidden. Your session is restricted to clinic ${session.facilityId}.`);
     (err as unknown as { statusCode: number }).statusCode = 403;
     throw err;
   }
 }
+
+/**
+ * Validates that an incoming request has a valid JWT session with 'admin' role.
+ * Returns the authenticated admin payload or failure status with explanatory message.
+ */
+export function requireAdminSession(event: {
+  headers?: Record<string, string | undefined>;
+  cookies?: string[];
+}): { session: JWTPayload | null; error?: string; statusCode?: number } {
+  const session = getAuthenticatedSession(event);
+  if (!session) {
+    return {
+      session: null,
+      error: 'Authentication token is required.',
+      statusCode: 401,
+    };
+  }
+  if (session.role !== 'admin') {
+    return {
+      session: null,
+      error: 'Access forbidden. District Health Authority administrator privileges required.',
+      statusCode: 403,
+    };
+  }
+  return { session };
+}
+

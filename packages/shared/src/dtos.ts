@@ -174,6 +174,7 @@ export interface OfflineActionItem {
   clientActionId: string;
   action: 'DISPENSE' | 'RESTOCK';
   drugId: string;
+  drugName?: string;
   quantity: number;
   dispensedTo?: string;
   patientName?: string;

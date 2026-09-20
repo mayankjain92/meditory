@@ -57,6 +57,18 @@ export const SEED_FACILITIES: Facility[] = [
     longitude: 73.0976,
     createdAt: '2026-01-01T00:00:00.000Z',
   },
+  {
+    id: 'DHA-RAIGAD-HQ',
+    name: 'Raigad District Health Authority Headquarters',
+    districtId: 'DISTRICT-RAIGAD',
+    districtName: 'Raigad',
+    type: FACILITY_TYPE.CHC,
+    phone: '+91 2141 222001',
+    address: 'District Civil Surgeon Office, Collectorate Complex, Alibag, Raigad - 402201',
+    latitude: 18.6500,
+    longitude: 72.8750,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
 ];
 
 /**
@@ -149,6 +161,16 @@ export const SEED_WORKERS = [
     name: 'Dr. Kavita Joshi',
     email: 'kavita.joshi@chc-pen.in',
     role: 'facility_worker' as const,
+    status: 'ACTIVE' as const,
+    passwordHash: hashedPassword,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-ADMIN-01',
+    facilityId: 'DHA-RAIGAD-HQ',
+    name: 'Dr. State Health Mission Admin',
+    email: 'admin@meditory.gov.in',
+    role: 'admin' as const,
     status: 'ACTIVE' as const,
     passwordHash: hashedPassword,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -388,6 +410,8 @@ export async function runSeed(): Promise<void> {
   console.log(`   Email: priya.deshmukh@phc-vadkhal.in | Password: ${SEED_PASSWORD}`);
   console.log(`3. Pen CHC (Demonstrates High Stock & Referral Destination):`);
   console.log(`   Email: amit.patil@chc-pen.in | Password: ${SEED_PASSWORD}`);
+  console.log(`4. District Health Authority Admin (Clinic Approvals & Governance):`);
+  console.log(`   Email: admin@meditory.gov.in | Password: ${SEED_PASSWORD} | Role: admin`);
   console.log(`------------------------------------------------------------------------\n`);
 }
 

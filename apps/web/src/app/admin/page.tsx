@@ -12,11 +12,38 @@ import {
   Clock,
   RefreshCw,
   FileCheck2,
+  Loader2,
 } from 'lucide-react';
+import { api, getStoredToken, clearStoredSession } from '@/lib/api-client';
 
 export default function AdminBridgePage() {
   const router = useRouter();
   const [adminStatus, setAdminStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      clearStoredSession();
+      router.replace('/login');
+      return;
+    }
+
+    api
+      .get('/api/auth/me')
+      .then((data) => {
+        if (!data?.user) {
+          clearStoredSession();
+          router.replace('/login');
+        } else {
+          setIsCheckingAuth(false);
+        }
+      })
+      .catch(() => {
+        clearStoredSession();
+        router.replace('/login');
+      });
+  }, [router]);
 
   useEffect(() => {
     fetch('http://localhost:3005/health')
@@ -26,6 +53,22 @@ export default function AdminBridgePage() {
       })
       .catch(() => setAdminStatus('offline'));
   }, []);
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-surface-container-low flex flex-col items-center justify-center p-6 antialiased">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 text-primary-container animate-spin" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-semibold text-on-surface">Verifying Administrator Session...</p>
+            <p className="text-xs text-on-surface-variant">Checking authorization credentials</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-surface-container-low flex flex-col antialiased text-on-surface">
@@ -64,13 +107,13 @@ export default function AdminBridgePage() {
 
           <div className="space-y-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wide">
-              Dedicated Server Architecture • Port 3005
+              District Health Authority Governance
             </span>
             <h1 className="text-2xl sm:text-3xl font-bold text-on-surface tracking-tight">
               District Health Authority Admin Portal
             </h1>
             <p className="text-sm text-on-surface-variant max-w-lg mx-auto">
-              Per security policy, clinic registration approvals and master health grid governance are isolated on an independent server process.
+              Per security policy, clinic registration approvals and master health grid governance are isolated on an independent administrative portal.
             </p>
           </div>
 
@@ -79,8 +122,8 @@ export default function AdminBridgePage() {
             <div className="flex items-center gap-2.5">
               <Server className="w-4 h-4 text-slate-500" />
               <div className="text-left">
-                <span className="font-semibold block text-slate-800">Admin Server Process</span>
-                <span className="font-mono text-slate-500 text-[11px]">http://localhost:3005</span>
+                <span className="font-semibold block text-slate-800">Admin Authority Console</span>
+                <span className="text-slate-500 text-[11px]">Authorized Governance Node</span>
               </div>
             </div>
             <div className="flex items-center gap-1.5 font-bold">
@@ -91,7 +134,7 @@ export default function AdminBridgePage() {
                 </span>
               ) : adminStatus === 'offline' ? (
                 <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                  Ready on :3005
+                  Standing By
                 </span>
               ) : (
                 <span className="text-slate-500 flex items-center gap-1">
@@ -119,6 +162,36 @@ export default function AdminBridgePage() {
             >
               Open Clinic Workstation
             </button>
+          </div>
+
+          {/* Admin Evaluation Credentials Card */}
+          <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 max-w-md mx-auto text-left space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Health Authority Sign-In Credentials
+              </span>
+              <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                RBAC Protected
+              </span>
+            </div>
+            <div className="text-xs font-mono bg-white p-2.5 rounded border border-slate-200 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Official Email:</span>
+                <span className="font-bold text-slate-800">admin@meditory.gov.in</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Password:</span>
+                <span className="font-bold text-slate-800">Password@123</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Role:</span>
+                <span className="font-bold text-primary">admin (District Health Authority)</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Only users with the <code className="text-primary font-bold">admin</code> role can access the portal and authorize clinic licenses.
+            </p>
           </div>
 
           {/* Information list */}

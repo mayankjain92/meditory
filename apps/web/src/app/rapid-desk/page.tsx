@@ -232,7 +232,7 @@ function RapidDeskContent() {
         const cached = await getCachedShelfInventory();
         if (cached && cached.length > 0) {
           setItems(cached);
-          showToast('📱 Loaded shelf inventory from local IndexedDB cache.');
+          showToast('📱 Loaded shelf inventory from offline storage.');
           return;
         }
       }
@@ -258,11 +258,11 @@ function RapidDeskContent() {
         }
       }
     } catch (e: any) {
-      console.warn('Network error while loading inventory, trying IndexedDB cache:', e);
+      console.warn('Network error while loading inventory, trying cached shelf storage:', e);
       const cached = await getCachedShelfInventory();
       if (cached && cached.length > 0) {
         setItems(cached);
-        showToast('📱 Offline: Loaded shelf inventory from local IndexedDB cache.');
+        showToast('📱 Offline: Loaded shelf inventory from offline storage.');
       } else {
         showToast(e.message || 'Failed to load clinic inventory.');
       }
@@ -426,7 +426,7 @@ function RapidDeskContent() {
       setItems((prev) =>
         prev.map((item) => (item.drugId === drugId ? { ...item, quantity: newQty, status: newStatus } : item))
       );
-      showToast(`⚡ Offline Dispense Queued: ${quantity} ${targetItem.unit} of ${targetItem.drugName} saved to IndexedDB.`);
+      showToast(`⚡ Offline Dispense Queued: ${quantity} ${targetItem.unit} of ${targetItem.drugName} saved locally.`);
       return true;
     }
 
@@ -484,7 +484,7 @@ function RapidDeskContent() {
       setItems((prev) =>
         prev.map((item) => (item.drugId === drugId ? { ...item, quantity: newQty, status: newStatus } : item))
       );
-      showToast(`⚡ Network unavailable: Stock reduction queued offline in IndexedDB.`);
+      showToast(`⚡ Network unavailable: Stock reduction queued offline.`);
       return true;
     }
   };
@@ -702,7 +702,7 @@ function RapidDeskContent() {
         };
         setShiftTransactions((prev) => [newTx, ...prev]);
 
-        showToast(`📦 Restock recorded offline: +${intakeQty} ${effectiveUnit} of ${effectiveDrugName} (queued in IndexedDB).`);
+        showToast(`📦 Restock recorded offline: +${intakeQty} ${effectiveUnit} of ${effectiveDrugName} (queued locally).`);
         setIntakeBatch(`LOT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
         setIntakeChallan(`DEPOT-CH-${Math.floor(1000 + Math.random() * 9000)}`);
       } catch (err: any) {
@@ -846,7 +846,7 @@ function RapidDeskContent() {
                 : item
             )
           );
-          showToast(`⚡ Network unavailable: Restock queued offline in IndexedDB.`);
+          showToast(`⚡ Network unavailable: Restock queued offline.`);
         } catch (queueErr) {
           showToast(`❌ Restock failed: ${err.message}`);
         }
@@ -1586,7 +1586,7 @@ function RapidDeskContent() {
         <div className="hidden lg:flex items-center gap-3 text-xs text-slate-500 pr-2">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-semibold text-slate-700">DDB Sync Active</span>
+            <span className="font-semibold text-slate-700">Cloud Synced</span>
           </div>
           <span className="text-slate-300">|</span>
           <div className="flex items-center gap-1 font-mono text-[11px] text-cyan-800 bg-cyan-50 px-2 py-1 rounded-md border border-cyan-200/60">

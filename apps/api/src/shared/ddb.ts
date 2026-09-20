@@ -9,7 +9,10 @@ import { TABLE_NAMES, INDEX_NAMES } from '@meditory/shared';
 
 export { TABLE_NAMES, INDEX_NAMES };
 
-export const isLocal = !!process.env.DYNAMODB_ENDPOINT || !process.env.AWS_LAMBDA_FUNCTION_NAME;
+export const isLocal =
+  process.env.USE_AWS === 'true' || process.env.TARGET_AWS === 'true'
+    ? false
+    : !!process.env.DYNAMODB_ENDPOINT || !process.env.AWS_LAMBDA_FUNCTION_NAME;
 export const localEndpoint = process.env.DYNAMODB_ENDPOINT || 'http://localhost:8000';
 
 /**

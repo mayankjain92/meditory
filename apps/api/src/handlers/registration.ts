@@ -17,7 +17,8 @@ import {
   InventoryItem,
 } from '@meditory/shared';
 import { docClient } from '../shared/ddb.js';
-import { successResponse, badRequest, unauthorized, notFound } from '../shared/response.js';
+import { requireAdminSession } from '../authorizer/index.js';
+import { successResponse, badRequest, unauthorized, forbidden, notFound } from '../shared/response.js';
 import {
   sendClinicRegistrationSubmittedEmail,
   sendClinicApprovalEmail,
@@ -266,6 +267,13 @@ export async function registerFacilityHandler(event: APIGatewayProxyEventV2) {
  * Retrieves all registered clinics, highlighting pending approval applications.
  */
 export async function getPendingRegistrationsHandler(event: APIGatewayProxyEventV2) {
+  const adminCheck = requireAdminSession(event);
+  if (!adminCheck.session) {
+    return adminCheck.statusCode === 403
+      ? forbidden(adminCheck.error)
+      : unauthorized(adminCheck.error);
+  }
+
   const statusFilter = event.queryStringParameters?.status?.toUpperCase();
 
   const scanRes = await docClient.send(
@@ -322,6 +330,13 @@ export async function getPendingRegistrationsHandler(event: APIGatewayProxyEvent
  * and initializes starter shelf formulary.
  */
 export async function approveRegistrationHandler(event: APIGatewayProxyEventV2) {
+  const adminCheck = requireAdminSession(event);
+  if (!adminCheck.session) {
+    return adminCheck.statusCode === 403
+      ? forbidden(adminCheck.error)
+      : unauthorized(adminCheck.error);
+  }
+
   if (!event.body) {
     return badRequest('Request body is required.');
   }
@@ -333,7 +348,7 @@ export async function approveRegistrationHandler(event: APIGatewayProxyEventV2) 
     return badRequest('Invalid JSON payload.');
   }
 
-  const { facilityId, remarks, approvedBy = 'State Health Mission Admin' } = body;
+  const { facilityId, remarks, approvedBy = adminCheck.session.name || 'State Health Mission Admin' } = body;
   if (!facilityId) {
     return badRequest('facilityId is required.');
   }
@@ -481,6 +496,13 @@ export async function approveRegistrationHandler(event: APIGatewayProxyEventV2) 
  * Rejects a clinic application with remarks.
  */
 export async function rejectRegistrationHandler(event: APIGatewayProxyEventV2) {
+  const adminCheck = requireAdminSession(event);
+  if (!adminCheck.session) {
+    return adminCheck.statusCode === 403
+      ? forbidden(adminCheck.error)
+      : unauthorized(adminCheck.error);
+  }
+
   if (!event.body) {
     return badRequest('Request body is required.');
   }
@@ -492,7 +514,11 @@ export async function rejectRegistrationHandler(event: APIGatewayProxyEventV2) {
     return badRequest('Invalid JSON payload.');
   }
 
-  const { facilityId, rejectionReason = 'Application verification incomplete', rejectedBy = 'State Health Mission Admin' } = body;
+  const {
+    facilityId,
+    rejectionReason = 'Application verification incomplete',
+    rejectedBy = adminCheck.session.name || 'State Health Mission Admin',
+  } = body;
   if (!facilityId) {
     return badRequest('facilityId is required.');
   }

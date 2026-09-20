@@ -15,7 +15,7 @@
     "seed": "tsx src/seeds/seed-data.ts",
     "clean:db": "tsx src/seeds/clean-db.ts",
     "inspect": "tsx src/inspect-db.ts",
-    "test:local": "tsx src/test-local.ts",
+    "test": "tsx src/test-handlers.ts",
     "test:handlers": "tsx src/test-handlers.ts"
   },
   "dependencies": {

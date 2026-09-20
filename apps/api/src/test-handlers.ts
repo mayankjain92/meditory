@@ -505,6 +505,18 @@ async function runTests() {
   // =========================================================================
   console.log(`\n[Group 8: Emergency Doctor & Clinic Phone Directory]`);
 
+  // Test 8.1: Unauthenticated Doctor Directory Call (Zero-Trust Guard)
+  const unauthDocEvent = createMockEvent({
+    method: 'GET',
+    path: '/clinic/doctors',
+  });
+  const unauthDocRes = await doctorsHandler(unauthDocEvent);
+  assert(
+    unauthDocRes.statusCode === 401,
+    'Unauthenticated GET /clinic/doctors rejected with HTTP 401 Unauthorized'
+  );
+
+  // Test 8.2: Authenticated Doctor Directory Query
   const docEvent = createMockEvent({
     method: 'GET',
     path: '/clinic/doctors',
@@ -512,9 +524,9 @@ async function runTests() {
   });
   const docRes = await doctorsHandler(docEvent);
   const docData = JSON.parse(docRes.body);
-  assert(docRes.statusCode === 200, 'GET /clinic/doctors returns HTTP 200');
+  assert(docRes.statusCode === 200, 'Authenticated GET /clinic/doctors returns HTTP 200');
   assert(docData.currentFacility.name.includes('Alibag'), 'Identifies current logged-in facility');
-  assert(docData.facilities.length >= 3, 'Returns all 3 registered network health facilities');
+  assert(docData.facilities.length >= 3, 'Returns registered network health facilities');
   assert(Array.isArray(docData.directory), 'Returns complete district directory array');
   assert(docData.directory.length >= 7, 'District directory contains medical staff across facilities');
   const penDoctor = docData.directory.find((d: any) => d.name === 'Dr. Amit Patil');
@@ -572,23 +584,89 @@ async function runTests() {
     'Unapproved clinic doctor cannot log in (HTTP 401 Unauthorized)'
   );
 
-  // Test 9.3: District Admin Queries Pending Applications
-  const adminListEvent = createMockEvent({
+  // Test 9.3a: Anonymous Caller Rejected from Admin Queue (Zero-Trust Guard)
+  const anonAdminListEvent = createMockEvent({
     method: 'GET',
     path: '/admin/registrations',
   });
+  const anonAdminListRes = await getPendingRegistrationsHandler(anonAdminListEvent);
+  assert(
+    anonAdminListRes.statusCode === 401,
+    'Unauthenticated GET /admin/registrations rejected with HTTP 401 Unauthorized'
+  );
+
+  // Test 9.3b: Clinic Worker Blocked from Admin Queue (RBAC Guard)
+  const workerAdminListEvent = createMockEvent({
+    method: 'GET',
+    path: '/admin/registrations',
+    headers: { authorization: `Bearer ${token}` }, // role: 'facility_worker'
+  });
+  const workerAdminListRes = await getPendingRegistrationsHandler(workerAdminListEvent);
+  assert(
+    workerAdminListRes.statusCode === 403,
+    'Clinic worker calling GET /admin/registrations blocked with HTTP 403 Forbidden'
+  );
+
+  // Test 9.3c: District Health Authority Admin Logs In
+  const adminLoginEvent = createMockEvent({
+    method: 'POST',
+    path: '/auth/login',
+    body: {
+      email: 'admin@meditory.gov.in',
+      password: 'Password@123',
+    },
+  });
+  const adminLoginRes = await loginHandler(adminLoginEvent);
+  const adminLoginData = JSON.parse(adminLoginRes.body);
+  assert(adminLoginRes.statusCode === 200, 'District Admin logs in successfully with HTTP 200');
+  assert(adminLoginData.user.role === 'admin', 'Admin user payload has role: "admin"');
+  const adminToken = adminLoginData.token;
+  assert(Boolean(adminToken), 'Admin receives signed JWT authorization token');
+
+  // Test 9.3d: Authenticated District Admin Queries Pending Applications
+  const adminListEvent = createMockEvent({
+    method: 'GET',
+    path: '/admin/registrations',
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
   const adminListRes = await getPendingRegistrationsHandler(adminListEvent);
   const adminListData = JSON.parse(adminListRes.body);
-  assert(adminListRes.statusCode === 200, 'GET /admin/registrations returns HTTP 200');
+  assert(adminListRes.statusCode === 200, 'Authenticated Admin GET /admin/registrations returns HTTP 200');
   assert(adminListData.pendingCount >= 1, 'Admin queue identifies at least 1 pending application');
   const rohaInQueue = adminListData.facilities.find((f: any) => f.id === rohaFacilityId);
   assert(Boolean(rohaInQueue), 'Roha PHC appears in Admin review queue');
   assert(rohaInQueue.approvalStatus === 'PENDING', 'Roha PHC status is PENDING');
 
-  // Test 9.4: District Admin Approves Clinic Registration
+  // Test 9.4a: Unauthenticated Clinic Approval Rejected
+  const unauthApproveEvent = createMockEvent({
+    method: 'POST',
+    path: '/admin/registrations/approve',
+    body: { facilityId: rohaFacilityId },
+  });
+  const unauthApproveRes = await approveRegistrationHandler(unauthApproveEvent);
+  assert(
+    unauthApproveRes.statusCode === 401,
+    'Unauthenticated POST /admin/registrations/approve rejected with HTTP 401'
+  );
+
+  // Test 9.4b: Clinic Worker Approving Clinic Rejected (RBAC Guard)
+  const workerApproveEvent = createMockEvent({
+    method: 'POST',
+    path: '/admin/registrations/approve',
+    headers: { authorization: `Bearer ${token}` }, // role: 'facility_worker'
+    body: { facilityId: rohaFacilityId },
+  });
+  const workerApproveRes = await approveRegistrationHandler(workerApproveEvent);
+  assert(
+    workerApproveRes.statusCode === 403,
+    'Clinic worker calling POST /admin/registrations/approve blocked with HTTP 403 Forbidden'
+  );
+
+  // Test 9.4c: Authenticated District Admin Approves Clinic Registration
   const clinicApproveEvent = createMockEvent({
     method: 'POST',
     path: '/admin/registrations/approve',
+    headers: { authorization: `Bearer ${adminToken}` },
     body: {
       facilityId: rohaFacilityId,
       remarks: 'Verified by Raigad Civil Surgeon',
@@ -597,7 +675,7 @@ async function runTests() {
   });
   const clinicApproveRes = await approveRegistrationHandler(clinicApproveEvent);
   const clinicApproveData = JSON.parse(clinicApproveRes.body);
-  assert(clinicApproveRes.statusCode === 200, 'POST /admin/registrations/approve returns HTTP 200');
+  assert(clinicApproveRes.statusCode === 200, 'Admin POST /admin/registrations/approve returns HTTP 200');
   assert(clinicApproveData.success === true, 'Admin approval succeeds');
   assert(clinicApproveData.status === 'APPROVED', 'Clinic status updated to APPROVED');
   assert(clinicApproveData.seededItemsCount >= 4, 'Starter emergency formulary automatically seeded');
@@ -646,9 +724,27 @@ async function runTests() {
   const dummyRegData = JSON.parse(dummyRegRes.body);
   const dummyFacId = dummyRegData.registrationId;
 
+  // Test 9.7a: Clinic Worker Attempting to Reject Registration Blocked
+  const workerRejectEvent = createMockEvent({
+    method: 'POST',
+    path: '/admin/registrations/reject',
+    headers: { authorization: `Bearer ${token}` }, // role: 'facility_worker'
+    body: {
+      facilityId: dummyFacId,
+      rejectionReason: 'Invalid facility physical address provided.',
+    },
+  });
+  const workerRejectRes = await rejectRegistrationHandler(workerRejectEvent);
+  assert(
+    workerRejectRes.statusCode === 403,
+    'Clinic worker calling POST /admin/registrations/reject blocked with HTTP 403 Forbidden'
+  );
+
+  // Test 9.7b: Authenticated Admin Rejects Registration
   const rejectEvent = createMockEvent({
     method: 'POST',
     path: '/admin/registrations/reject',
+    headers: { authorization: `Bearer ${adminToken}` },
     body: {
       facilityId: dummyFacId,
       rejectionReason: 'Invalid facility physical address provided.',
@@ -656,7 +752,7 @@ async function runTests() {
   });
   const rejectRes = await rejectRegistrationHandler(rejectEvent);
   const rejectData = JSON.parse(rejectRes.body);
-  assert(rejectRes.statusCode === 200, 'POST /admin/registrations/reject returns HTTP 200');
+  assert(rejectRes.statusCode === 200, 'Admin POST /admin/registrations/reject returns HTTP 200');
   assert(rejectData.status === 'REJECTED', 'Application marked as REJECTED');
 
   console.log(`\n======================================================`);
